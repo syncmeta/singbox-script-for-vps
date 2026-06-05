@@ -10,19 +10,14 @@
   "dns": {
     "servers": [
       {
-        "type": "https",
         "tag": "cloudflare-doh",
-        "server": "1.1.1.1",
-        "server_port": 443,
-        "path": "/dns-query",
+        "address": "https://1.1.1.1/dns-query",
         "detour": "reality-tcp",
-        "tls": {
-          "server_name": "cloudflare-dns.com"
-        }
+        "strategy": "prefer_ipv4"
       },
       {
-        "type": "local",
-        "tag": "local"
+        "tag": "local",
+        "address": "local"
       }
     ],
     "final": "cloudflare-doh",
@@ -99,10 +94,6 @@
   ],
   "route": {
     "auto_detect_interface": true,
-    "default_domain_resolver": {
-      "server": "local",
-      "strategy": "prefer_ipv4"
-    },
     "rule_set": [
       {
         "type": "remote",
@@ -186,13 +177,6 @@
         ],
         "action": "route",
         "outbound": "hy2"
-      },
-      {
-        "network": [
-          "icmp"
-        ],
-        "action": "route",
-        "outbound": "direct"
       }
     ],
     "final": "reality-tcp"

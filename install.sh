@@ -520,15 +520,12 @@ write_tun_profile() {
   "dns": {
     "servers": [
       {
-        "type": "https",
         "tag": "cloudflare-doh",
-        "server": "1.1.1.1",
-        "server_port": 443,
-        "path": "/dns-query",
+        "address": "https://1.1.1.1/dns-query",
         "detour": "reality-tcp",
-        "tls": {"server_name": "cloudflare-dns.com"}
+        "strategy": "prefer_ipv4"
       },
-      {"type": "local", "tag": "local"}
+      {"tag": "local", "address": "local"}
     ],
     "final": "cloudflare-doh",
     "strategy": "prefer_ipv4"
@@ -582,8 +579,7 @@ write_tun_profile() {
     {"type": "block", "tag": "block"}
   ],
   "route": {
-    "auto_detect_interface": true,
-    "default_domain_resolver": {"server": "local", "strategy": "prefer_ipv4"},$route_rule_set
+    "auto_detect_interface": true,$route_rule_set
     "rules": [
       {"network": ["tcp", "udp"], "port": 53, "action": "hijack-dns"},
       {"protocol": ["dns"], "action": "hijack-dns"},
@@ -591,8 +587,7 @@ write_tun_profile() {
       {"ip_is_private": true, "action": "route", "outbound": "direct"},$cn_rules
       {"network": ["udp"], "port": 443, "action": "route", "outbound": "block"},
       {"network": ["tcp"], "action": "route", "outbound": "reality-tcp"},
-      {"network": ["udp"], "action": "route", "outbound": "hy2"},
-      {"network": ["icmp"], "action": "route", "outbound": "direct"}
+      {"network": ["udp"], "action": "route", "outbound": "hy2"}
     ],
     "final": "reality-tcp"
   }

@@ -165,6 +165,41 @@ singbox-vps publish
 - `proxy-global.json`: local mixed proxy, full proxy
 - `proxy-split.json`: local mixed proxy, CN direct
 
+For iOS, start with:
+
+```text
+tun-split.json
+```
+
+The generated TUN profiles intentionally use the legacy sing-box DNS server format so older iOS builds can import them.
+
+## Troubleshooting
+
+If iOS reports:
+
+```text
+decode config:dns.servers[0].type:json:unknown field "type"
+```
+
+Regenerate profiles with the latest installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/syncmeta/singbox-script-for-vps/main/install.sh -o /tmp/singbox-vps-install.sh
+bash /tmp/singbox-vps-install.sh
+singbox-vps links
+```
+
+Then delete the old profile on iOS and import the new `tun-split.json` URL.
+
+If a desktop client can import a profile but cannot connect, check the VPS first:
+
+```bash
+singbox-vps status
+singbox-vps logs
+```
+
+Confirm that the provider firewall allows TCP/443 and UDP/443. For desktop full-device routing, use `tun-split.json` first; `proxy-split.json` only exposes a local mixed proxy on `127.0.0.1:7890`.
+
 ## Security Notes
 
 Remote profile URLs contain usable client credentials inside the JSON. Keep the random token private.
