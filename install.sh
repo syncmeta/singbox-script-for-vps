@@ -15,8 +15,8 @@ Options:
   --publish-port PORT       HTTP port for remote profile import. Default: 8080
   --out-dir DIR             Private output dir. Default: /root/singbox-vps
   --server-ip IP            Override public IPv4 detection
-  --xray-sni DOMAIN         Legacy option kept for compatibility; unused
-  --xray-dest HOST:PORT     Legacy option kept for compatibility; unused
+  --xray-sni DOMAIN         Reality SNI. Default: www.cloudflare.com
+  --xray-dest HOST:PORT     Reality dest. Default: www.cloudflare.com:443
   --no-publish              Do not expose profile URLs over HTTP
   -h, --help                Show this help
 
@@ -116,8 +116,8 @@ Install options:
   --publish-port PORT       HTTP port for remote profile import. Default: 8080
   --out-dir DIR             Private output dir. Default: /root/singbox-vps
   --server-ip IP            Override public IPv4 detection
-  --xray-sni DOMAIN         Legacy option kept for compatibility; unused
-  --xray-dest HOST:PORT     Legacy option kept for compatibility; unused
+  --xray-sni DOMAIN         Reality SNI. Default: www.cloudflare.com
+  --xray-dest HOST:PORT     Reality dest. Default: www.cloudflare.com:443
   --no-publish              Do not expose profile URLs over HTTP
 
 Uninstall options:
@@ -208,7 +208,6 @@ write_state_file() {
     write_env_var XRAY_PRIVATE_KEY "$XRAY_PRIVATE_KEY"
     write_env_var XRAY_PUBLIC_KEY "$XRAY_PUBLIC_KEY"
     write_env_var XRAY_SHORT_ID "$XRAY_SHORT_ID"
-    write_env_var TROJAN_PASSWORD "$TROJAN_PASSWORD"
     write_env_var HY2_PASSWORD "$HY2_PASSWORD"
     write_env_var HY2_OBFS_TYPE "$HY2_OBFS_TYPE"
     write_env_var HY2_OBFS_PASSWORD "$HY2_OBFS_PASSWORD"
@@ -403,10 +402,6 @@ generate_hy2_secrets() {
   HY2_OBFS_PASSWORD="$(openssl rand -hex 16)"
 }
 
-generate_trojan_secret() {
-  TROJAN_PASSWORD="$(openssl rand -hex 24)"
-}
-
 generate_profile_token() {
   PROFILE_TOKEN="$(openssl rand -hex 18)"
 }
@@ -447,9 +442,6 @@ ensure_state() {
   if [[ -z "${XRAY_UUID:-}" || -z "${XRAY_PRIVATE_KEY:-}" || -z "${XRAY_PUBLIC_KEY:-}" || -z "${XRAY_SHORT_ID:-}" ]]; then
     generate_xray_secrets
   fi
-  if [[ -z "${TROJAN_PASSWORD:-}" ]]; then
-    generate_trojan_secret
-  fi
   if [[ -z "${HY2_PASSWORD:-}" || -z "${HY2_OBFS_PASSWORD:-}" ]]; then
     generate_hy2_secrets
   fi
@@ -471,11 +463,6 @@ backup_file() {
 write_xray_config() {
   info "Writing Xray config"
   install -d -m 755 /usr/local/etc/xray
-  cp /etc/hysteria/server.crt /usr/local/etc/xray/trojan.crt
-  cp /etc/hysteria/server.key /usr/local/etc/xray/trojan.key
-  chown root:xray /usr/local/etc/xray/trojan.crt /usr/local/etc/xray/trojan.key
-  chmod 644 /usr/local/etc/xray/trojan.crt
-  chmod 640 /usr/local/etc/xray/trojan.key
   backup_file "$XRAY_CONFIG"
   cat > "$XRAY_CONFIG" <<EOF
 {
@@ -486,29 +473,30 @@ write_xray_config() {
   },
   "inbounds": [
     {
-      "tag": "trojan-tls-443",
+      "tag": "vless-reality-443",
       "listen": "0.0.0.0",
       "port": $XRAY_PORT,
-      "protocol": "trojan",
+      "protocol": "vless",
       "settings": {
         "clients": [
           {
-            "password": "$TROJAN_PASSWORD",
+            "id": "$XRAY_UUID",
+            "flow": "xtls-rprx-vision",
             "email": "primary"
           }
-        ]
+        ],
+        "decryption": "none"
       },
       "streamSettings": {
         "network": "tcp",
-        "security": "tls",
-        "tlsSettings": {
-          "minVersion": "1.2",
-          "certificates": [
-            {
-              "certificateFile": "/usr/local/etc/xray/trojan.crt",
-              "keyFile": "/usr/local/etc/xray/trojan.key"
-            }
-          ]
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "$XRAY_DEST",
+          "xver": 0,
+          "serverNames": ["$XRAY_SNI"],
+          "privateKey": "$XRAY_PRIVATE_KEY",
+          "shortIds": ["$XRAY_SHORT_ID"]
         }
       },
       "sniffing": {
@@ -579,7 +567,7 @@ write_tun_profile() {
         "tag": "geosite-cn",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-        "download_detour": "trojan-tcp",
+        "download_detour": "reality-tcp",
         "update_interval": "1d"
       },
       {
@@ -587,7 +575,7 @@ write_tun_profile() {
         "tag": "geoip-cn",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
-        "download_detour": "trojan-tcp",
+        "download_detour": "reality-tcp",
         "update_interval": "1d"
       }
     ],'
@@ -605,7 +593,7 @@ write_tun_profile() {
       {
         "tag": "cloudflare-doh",
         "address": "https://1.1.1.1/dns-query",
-        "detour": "trojan-tcp",
+        "detour": "reality-tcp",
         "strategy": "prefer_ipv4"
       },
       {"tag": "local", "address": "local"}
@@ -626,15 +614,22 @@ write_tun_profile() {
   ],
   "outbounds": [
     {
-      "type": "trojan",
-      "tag": "trojan-tcp",
+      "type": "vless",
+      "tag": "reality-tcp",
       "server": "$SERVER_IP",
       "server_port": $XRAY_PORT,
-      "password": "$TROJAN_PASSWORD",
+      "uuid": "$XRAY_UUID",
+      "flow": "xtls-rprx-vision",
+      "network": "tcp",
       "tls": {
         "enabled": true,
-        "server_name": "$SERVER_IP",
-        "insecure": true
+        "server_name": "$XRAY_SNI",
+        "utls": {"enabled": true, "fingerprint": "chrome"},
+        "reality": {
+          "enabled": true,
+          "public_key": "$XRAY_PUBLIC_KEY",
+          "short_id": "$XRAY_SHORT_ID"
+        }
       }
     },
     {
@@ -662,10 +657,10 @@ write_tun_profile() {
       {"ip_cidr": ["$SERVER_IP/32"], "action": "route", "outbound": "direct"},
       {"ip_is_private": true, "action": "route", "outbound": "direct"},$cn_rules
       {"network": ["udp"], "port": 443, "action": "route", "outbound": "block"},
-      {"network": ["tcp"], "action": "route", "outbound": "trojan-tcp"},
+      {"network": ["tcp"], "action": "route", "outbound": "reality-tcp"},
       {"network": ["udp"], "action": "route", "outbound": "hy2"}
     ],
-    "final": "trojan-tcp"
+    "final": "reality-tcp"
   }
 }
 EOF
@@ -685,7 +680,7 @@ write_proxy_profile() {
         "tag": "geosite-cn",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-        "download_detour": "trojan-tcp",
+        "download_detour": "reality-tcp",
         "update_interval": "1d"
       },
       {
@@ -693,7 +688,7 @@ write_proxy_profile() {
         "tag": "geoip-cn",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
-        "download_detour": "trojan-tcp",
+        "download_detour": "reality-tcp",
         "update_interval": "1d"
       }
     ],'
@@ -711,15 +706,22 @@ write_proxy_profile() {
   ],
   "outbounds": [
     {
-      "type": "trojan",
-      "tag": "trojan-tcp",
+      "type": "vless",
+      "tag": "reality-tcp",
       "server": "$SERVER_IP",
       "server_port": $XRAY_PORT,
-      "password": "$TROJAN_PASSWORD",
+      "uuid": "$XRAY_UUID",
+      "flow": "xtls-rprx-vision",
+      "network": "tcp",
       "tls": {
         "enabled": true,
-        "server_name": "$SERVER_IP",
-        "insecure": true
+        "server_name": "$XRAY_SNI",
+        "utls": {"enabled": true, "fingerprint": "chrome"},
+        "reality": {
+          "enabled": true,
+          "public_key": "$XRAY_PUBLIC_KEY",
+          "short_id": "$XRAY_SHORT_ID"
+        }
       }
     },
     {"type": "direct", "tag": "direct"},
@@ -731,7 +733,7 @@ write_proxy_profile() {
       {"ip_is_private": true, "action": "route", "outbound": "direct"},$cn_rules
       {"protocol": ["bittorrent"], "action": "route", "outbound": "block"}
     ],
-    "final": "trojan-tcp"
+    "final": "reality-tcp"
   }
 }
 EOF
@@ -773,7 +775,6 @@ write_client_env() {
     write_env_var XRAY_SHORT_ID "$XRAY_SHORT_ID"
     write_env_var XRAY_SNI "$XRAY_SNI"
     write_env_var XRAY_PORT "$XRAY_PORT"
-    write_env_var TROJAN_PASSWORD "$TROJAN_PASSWORD"
     write_env_var HY2_PORT "$HY2_PORT"
     write_env_var HY2_PASSWORD "$HY2_PASSWORD"
     write_env_var HY2_OBFS_TYPE "$HY2_OBFS_TYPE"
@@ -786,16 +787,16 @@ write_client_env() {
 }
 
 write_import_uris() {
-  local trojan_uri
+  local vless_uri
   local hy2_pin_escaped
   local hy2_uri
-  trojan_uri="trojan://$TROJAN_PASSWORD@$SERVER_IP:$XRAY_PORT?security=tls&sni=$SERVER_IP&allowInsecure=1#trojan-tls-$SERVER_IP"
+  vless_uri="vless://$XRAY_UUID@$SERVER_IP:$XRAY_PORT?encryption=none&security=reality&sni=$XRAY_SNI&fp=chrome&pbk=$XRAY_PUBLIC_KEY&sid=$XRAY_SHORT_ID&type=tcp&flow=xtls-rprx-vision&spx=%2F#vless-reality-$SERVER_IP"
   hy2_pin_escaped="$(printf '%s' "$HY2_TLS_PIN_SHA256" | sed 's/:/%3A/g')"
   hy2_uri="hysteria2://$HY2_PASSWORD@$SERVER_IP:$HY2_PORT/?insecure=1&pinSHA256=$hy2_pin_escaped&obfs=$HY2_OBFS_TYPE&obfs-password=$HY2_OBFS_PASSWORD&sni=$SERVER_IP#hy2-$SERVER_IP"
 
   cat > "$PRIVATE_DIR/import-uris.txt" <<EOF
-Trojan TLS:
-$trojan_uri
+VLESS Reality:
+$vless_uri
 
 Hysteria2:
 $hy2_uri

@@ -12,15 +12,25 @@
   ],
   "outbounds": [
     {
-      "type": "trojan",
-      "tag": "trojan-tcp",
+      "type": "vless",
+      "tag": "reality-tcp",
       "server": "YOUR_SERVER_IP",
       "server_port": 443,
-      "password": "YOUR_TROJAN_PASSWORD",
+      "uuid": "00000000-0000-4000-8000-000000000000",
+      "flow": "xtls-rprx-vision",
+      "network": "tcp",
       "tls": {
         "enabled": true,
-        "server_name": "YOUR_SERVER_IP",
-        "insecure": true
+        "server_name": "www.cloudflare.com",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "YOUR_REALITY_PUBLIC_KEY",
+          "short_id": "YOUR_REALITY_SHORT_ID"
+        }
       }
     },
     {
@@ -54,6 +64,6 @@
         "outbound": "block"
       }
     ],
-    "final": "trojan-tcp"
+    "final": "reality-tcp"
   }
 }
