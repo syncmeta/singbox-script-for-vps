@@ -111,6 +111,8 @@ Profiles:
   tun-split
   proxy-global
   proxy-split
+  proxy-hy2-global
+  proxy-hy2-split
 
 Install options:
   --publish-port PORT       HTTP port for remote profile import. Default: 8080
@@ -739,6 +741,74 @@ write_proxy_profile() {
 EOF
 }
 
+write_hy2_proxy_profile() {
+  local path="$1"
+  local split="${2:-global}"
+  local route_rule_set=""
+  local cn_rules=""
+
+  if [[ "$split" == "split" ]]; then
+    route_rule_set='
+    "rule_set": [
+      {
+        "type": "remote",
+        "tag": "geosite-cn",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
+        "download_detour": "hy2",
+        "update_interval": "1d"
+      },
+      {
+        "type": "remote",
+        "tag": "geoip-cn",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
+        "download_detour": "hy2",
+        "update_interval": "1d"
+      }
+    ],'
+    cn_rules='
+      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "route", "outbound": "direct"},
+      {"rule_set": ["geosite-cn", "geoip-cn"], "action": "route", "outbound": "direct"},'
+  fi
+
+  cat > "$path" <<EOF
+{
+  "log": {"level": "info"},
+  "experimental": {"cache_file": {"enabled": true}},
+  "inbounds": [
+    {"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 7890}
+  ],
+  "outbounds": [
+    {
+      "type": "hysteria2",
+      "tag": "hy2",
+      "server": "$SERVER_IP",
+      "server_port": $HY2_PORT,
+      "password": "$HY2_PASSWORD",
+      "obfs": {"type": "$HY2_OBFS_TYPE", "password": "$HY2_OBFS_PASSWORD"},
+      "tls": {
+        "enabled": true,
+        "server_name": "$SERVER_IP",
+        "insecure": true,
+        "certificate_public_key_sha256": ["$HY2_TLS_CERT_PUBKEY_SHA256"]
+      }
+    },
+    {"type": "direct", "tag": "direct"},
+    {"type": "block", "tag": "block"}
+  ],
+  "route": {$route_rule_set
+    "rules": [
+      {"ip_cidr": ["$SERVER_IP/32"], "action": "route", "outbound": "direct"},
+      {"ip_is_private": true, "action": "route", "outbound": "direct"},$cn_rules
+      {"protocol": ["bittorrent"], "action": "route", "outbound": "block"}
+    ],
+    "final": "hy2"
+  }
+}
+EOF
+}
+
 write_profiles() {
   info "Writing sing-box client profiles"
   install -d -m 700 "$PRIVATE_DIR"
@@ -748,6 +818,8 @@ write_profiles() {
   write_tun_profile "$PROFILE_DIR/tun-split.json" split
   write_proxy_profile "$PROFILE_DIR/proxy-global.json" global
   write_proxy_profile "$PROFILE_DIR/proxy-split.json" split
+  write_hy2_proxy_profile "$PROFILE_DIR/proxy-hy2-global.json" global
+  write_hy2_proxy_profile "$PROFILE_DIR/proxy-hy2-split.json" split
   chmod 600 "$PROFILE_DIR"/*.json
 
   cp "$PROFILE_DIR"/*.json "$PRIVATE_DIR"/
@@ -762,6 +834,8 @@ write_profiles() {
     ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true sing-box check -c "$PROFILE_DIR/tun-split.json"
     sing-box check -c "$PROFILE_DIR/proxy-global.json"
     sing-box check -c "$PROFILE_DIR/proxy-split.json"
+    sing-box check -c "$PROFILE_DIR/proxy-hy2-global.json"
+    sing-box check -c "$PROFILE_DIR/proxy-hy2-split.json"
   else
     warn "sing-box CLI not installed on this VPS; skipped local client-config checks."
   fi
@@ -813,9 +887,14 @@ $PROFILE_DIR/tun-global.json
 $PROFILE_DIR/tun-split.json
 $PROFILE_DIR/proxy-global.json
 $PROFILE_DIR/proxy-split.json
+$PROFILE_DIR/proxy-hy2-global.json
+$PROFILE_DIR/proxy-hy2-split.json
 
 Recommended first import:
 proxy-split.json
+
+Hysteria2 proxy import:
+proxy-hy2-split.json
 
 Remote profile URLs:
 $(profile_links_text)
@@ -854,6 +933,8 @@ http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/tun-global.json
 http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/tun-split.json
 http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/proxy-global.json
 http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/proxy-split.json
+http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/proxy-hy2-global.json
+http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/proxy-hy2-split.json
 EOF
 }
 
@@ -896,6 +977,8 @@ publish_profiles() {
   cp "$PROFILE_DIR"/tun-split.json "$public_dir/"
   cp "$PROFILE_DIR"/proxy-global.json "$public_dir/"
   cp "$PROFILE_DIR"/proxy-split.json "$public_dir/"
+  cp "$PROFILE_DIR"/proxy-hy2-global.json "$public_dir/"
+  cp "$PROFILE_DIR"/proxy-hy2-split.json "$public_dir/"
   chmod 644 "$public_dir"/*.json
 
   cat > "$public_dir/index.txt" <<EOF
@@ -1014,6 +1097,9 @@ print_done() {
 Recommended profile:
   proxy-split
 
+Hysteria2 proxy profile:
+  proxy-hy2-split
+
 Remote import URLs:
 $(profile_links_text)
 
@@ -1037,6 +1123,9 @@ $(profile_links_text)
 
 Recommended first import:
   proxy-split.json
+
+Hysteria2 proxy import:
+  proxy-hy2-split.json
 
 Local profile directory:
   $PROFILE_DIR
@@ -1103,6 +1192,8 @@ profile_path_for_name() {
     tun-split|tun-split.json) printf '%s/tun-split.json' "$PROFILE_DIR" ;;
     proxy-global|proxy-global.json) printf '%s/proxy-global.json' "$PROFILE_DIR" ;;
     proxy-split|proxy-split.json) printf '%s/proxy-split.json' "$PROFILE_DIR" ;;
+    proxy-hy2-global|proxy-hy2-global.json) printf '%s/proxy-hy2-global.json' "$PROFILE_DIR" ;;
+    proxy-hy2-split|proxy-hy2-split.json) printf '%s/proxy-hy2-split.json' "$PROFILE_DIR" ;;
     *) return 1 ;;
   esac
 }

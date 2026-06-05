@@ -56,13 +56,15 @@ The installer creates:
 
 ## Import Links
 
-After installation, the script prints four import URLs:
+After installation, the script prints six import URLs:
 
 ```text
 http://VPS_IP:8080/RANDOM_TOKEN/tun-global.json
 http://VPS_IP:8080/RANDOM_TOKEN/tun-split.json
 http://VPS_IP:8080/RANDOM_TOKEN/proxy-global.json
 http://VPS_IP:8080/RANDOM_TOKEN/proxy-split.json
+http://VPS_IP:8080/RANDOM_TOKEN/proxy-hy2-global.json
+http://VPS_IP:8080/RANDOM_TOKEN/proxy-hy2-split.json
 ```
 
 Use those URLs in SFM or any sing-box client that supports remote profile import.
@@ -77,6 +79,12 @@ Recommended first profile:
 
 ```text
 proxy-split.json
+```
+
+Hysteria2 proxy-only profile:
+
+```text
+proxy-hy2-split.json
 ```
 
 ## Management
@@ -174,8 +182,10 @@ singbox-vps publish
 
 - `tun-global.json`: TUN mode, full proxy
 - `tun-split.json`: TUN mode, CN direct
-- `proxy-global.json`: local mixed proxy, full proxy
-- `proxy-split.json`: local mixed proxy, CN direct
+- `proxy-global.json`: local mixed proxy, VLESS Reality, full proxy
+- `proxy-split.json`: local mixed proxy, VLESS Reality, CN direct
+- `proxy-hy2-global.json`: local mixed proxy, Hysteria2, full proxy
+- `proxy-hy2-split.json`: local mixed proxy, Hysteria2, CN direct
 
 For iOS, start with:
 
@@ -211,6 +221,8 @@ singbox-vps logs
 ```
 
 Confirm that the provider firewall allows TCP/443 and UDP/443. For desktop full-device routing, use `tun-split.json` first; `proxy-split.json` only exposes a local mixed proxy on `127.0.0.1:7890`.
+
+If you want to test Hysteria2 without TUN, import `proxy-hy2-split.json`; it also exposes a local mixed proxy on `127.0.0.1:7890`.
 
 ## Security Notes
 
