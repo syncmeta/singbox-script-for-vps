@@ -12,7 +12,7 @@
       {
         "tag": "cloudflare-doh",
         "address": "https://1.1.1.1/dns-query",
-        "detour": "reality-tcp",
+        "detour": "trojan-tcp",
         "strategy": "prefer_ipv4"
       },
       {
@@ -43,25 +43,15 @@
   ],
   "outbounds": [
     {
-      "type": "vless",
-      "tag": "reality-tcp",
+      "type": "trojan",
+      "tag": "trojan-tcp",
       "server": "YOUR_SERVER_IP",
       "server_port": 443,
-      "uuid": "00000000-0000-4000-8000-000000000000",
-      "flow": "xtls-rprx-vision",
-      "network": "tcp",
+      "password": "YOUR_TROJAN_PASSWORD",
       "tls": {
         "enabled": true,
-        "server_name": "www.cloudflare.com",
-        "utls": {
-          "enabled": true,
-          "fingerprint": "chrome"
-        },
-        "reality": {
-          "enabled": true,
-          "public_key": "YOUR_REALITY_PUBLIC_KEY",
-          "short_id": "YOUR_REALITY_SHORT_ID"
-        }
+        "server_name": "YOUR_SERVER_IP",
+        "insecure": true
       }
     },
     {
@@ -100,7 +90,7 @@
         "tag": "geosite-cn",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-        "download_detour": "reality-tcp",
+        "download_detour": "trojan-tcp",
         "update_interval": "1d"
       },
       {
@@ -108,7 +98,7 @@
         "tag": "geoip-cn",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
-        "download_detour": "reality-tcp",
+        "download_detour": "trojan-tcp",
         "update_interval": "1d"
       }
     ],
@@ -169,7 +159,7 @@
           "tcp"
         ],
         "action": "route",
-        "outbound": "reality-tcp"
+        "outbound": "trojan-tcp"
       },
       {
         "network": [
@@ -179,6 +169,6 @@
         "outbound": "hy2"
       }
     ],
-    "final": "reality-tcp"
+    "final": "trojan-tcp"
   }
 }

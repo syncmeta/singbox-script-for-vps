@@ -2,7 +2,7 @@
 
 One-command VPS setup for:
 
-- Xray VLESS Reality Vision on TCP/443
+- Xray Trojan over TLS on TCP/443
 - Hysteria2 on UDP/443
 - sing-box client profiles for remote import
 - A persistent `singbox-vps` command to view links, regenerate profiles, edit profiles, and rotate the publish token
@@ -32,7 +32,7 @@ bash /tmp/singbox-vps-install.sh --server-ip YOUR_SERVER_IP
 
 - Debian/Ubuntu-like Linux with systemd
 - Root access
-- TCP/443 open for VLESS Reality
+- TCP/443 open for Trojan over TLS
 - UDP/443 open for Hysteria2
 - TCP/8080 open for remote sing-box profile import, unless changed with `--publish-port`
 
@@ -50,9 +50,9 @@ The installer creates:
 /etc/systemd/system/singbox-vps-profile-server.service
 ```
 
-`config.env` stores editable settings such as the server IP, Reality SNI, and publish port.
+`config.env` stores editable settings such as the server IP and publish port.
 
-`state.env` stores generated secrets such as UUIDs, Reality keys, Hysteria2 passwords, and the publish token.
+`state.env` stores generated secrets such as Trojan/Hysteria2 passwords and the publish token.
 
 ## Import Links
 
