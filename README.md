@@ -135,6 +135,18 @@ Show recent logs:
 singbox-vps logs
 ```
 
+Uninstall generated deployment files:
+
+```bash
+singbox-vps uninstall
+```
+
+Uninstall and remove Xray/Hysteria2 binaries too:
+
+```bash
+singbox-vps uninstall --purge-binaries
+```
+
 ## Editing Settings
 
 For normal settings, edit:

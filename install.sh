@@ -25,6 +25,9 @@ After install:
   singbox-vps status
   singbox-vps edit proxy-split
   singbox-vps regen
+
+Maintenance:
+  bash install.sh uninstall [--purge-binaries]
 EOF
 }
 
@@ -89,6 +92,7 @@ Usage:
 
 Commands:
   install [options]         Install or repair the VPS deployment
+  uninstall [options]       Stop services and remove generated deployment files
   links                     Show remote sing-box profile import URLs
   status                    Show service and listener status
   config                    Show config files and current settings
@@ -115,6 +119,9 @@ Install options:
   --xray-sni DOMAIN         Reality SNI. Default: www.cloudflare.com
   --xray-dest HOST:PORT     Reality dest. Default: www.cloudflare.com:443
   --no-publish              Do not expose profile URLs over HTTP
+
+Uninstall options:
+  --purge-binaries          Also remove Xray and Hysteria2 binaries/service units
 EOF
 }
 
@@ -223,6 +230,68 @@ install_packages() {
     openssl \
     python3 \
     unzip
+}
+
+remove_path() {
+  local path="$1"
+  if [[ -e "$path" || -L "$path" ]]; then
+    rm -rf -- "$path"
+  fi
+}
+
+uninstall_command() {
+  local purge_binaries=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --purge-binaries)
+        purge_binaries=1
+        shift
+        ;;
+      -h|--help)
+        cat <<'EOF'
+Usage:
+  singbox-vps uninstall [--purge-binaries]
+
+Stops singbox-vps services and removes generated config/profile files.
+By default it keeps Xray and Hysteria2 binaries in place so reinstall is faster.
+EOF
+        return 0
+        ;;
+      *)
+        die "Unknown uninstall option: $1"
+        ;;
+    esac
+  done
+
+  require_root
+  info "Stopping services"
+  systemctl disable --now "$(basename "$PROFILE_SERVICE")" >/dev/null 2>&1 || true
+  systemctl disable --now xray >/dev/null 2>&1 || true
+  systemctl disable --now hysteria-server >/dev/null 2>&1 || true
+
+  info "Removing singbox-vps generated files"
+  remove_path "$PROFILE_SERVICE"
+  remove_path "$CONFIG_DIR"
+  remove_path "$PRIVATE_DIR"
+  remove_path "$PROFILE_DIR"
+  remove_path "$PROFILE_WEB_ROOT"
+  remove_path /etc/sysctl.d/99-singbox-vps-bbr.conf
+
+  if (( purge_binaries == 1 )); then
+    info "Removing Xray and Hysteria2 binaries/service files"
+    remove_path /usr/local/bin/xray
+    remove_path /usr/local/share/xray
+    remove_path /usr/local/etc/xray
+    remove_path /var/log/xray
+    remove_path /etc/systemd/system/xray.service
+    remove_path /etc/systemd/system/xray@.service
+    remove_path /usr/local/bin/hysteria
+    remove_path /etc/hysteria
+    remove_path /etc/systemd/system/hysteria-server.service
+  fi
+
+  systemctl daemon-reload
+  info "Uninstall complete"
 }
 
 enable_bbr() {
@@ -1105,6 +1174,7 @@ main() {
 
   case "$command" in
     install) install_command "$@" ;;
+    uninstall) uninstall_command "$@" ;;
     links) links_command "$@" ;;
     status) status_command "$@" ;;
     config) config_command "$@" ;;
@@ -1130,4 +1200,11 @@ MANAGER_EOF
 }
 
 write_manager
-exec "$MANAGER_BIN" install "$@"
+case "${1:-}" in
+  install|uninstall|links|status|config|profiles|edit|regen|publish|restart|rotate-token|rotate-secrets|logs|help|-h|--help)
+    exec "$MANAGER_BIN" "$@"
+    ;;
+  *)
+    exec "$MANAGER_BIN" install "$@"
+    ;;
+esac
