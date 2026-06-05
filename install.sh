@@ -348,6 +348,8 @@ install_xray() {
     useradd --system --no-create-home --shell /usr/sbin/nologin xray
   fi
   install -d -o xray -g xray -m 750 /var/log/xray
+  chown -R xray:xray /var/log/xray
+  chmod 750 /var/log/xray
 
   local stamp
   stamp="$(date +%Y%m%d%H%M%S)"
