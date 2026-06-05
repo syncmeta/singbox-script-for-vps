@@ -1,0 +1,19 @@
+# Generated local artifacts
+client.env
+import-uris.txt
+README.txt
+
+# Private generated profiles
+generated/
+profiles/
+*.local.json
+*.secret.json
+
+# Runtime logs and temporary files
+*.log
+*.tmp
+*.bak
+*.bak.*
+
+# macOS
+.DS_Store
