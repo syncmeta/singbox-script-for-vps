@@ -756,8 +756,8 @@ write_profiles() {
   write_private_readme
 
   if command -v sing-box >/dev/null 2>&1; then
-    ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true sing-box check -c "$PROFILE_DIR/tun-global.json"
-    ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true sing-box check -c "$PROFILE_DIR/tun-split.json"
+    ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true sing-box check -c "$PROFILE_DIR/tun-global.json"
+    ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true sing-box check -c "$PROFILE_DIR/tun-split.json"
     sing-box check -c "$PROFILE_DIR/proxy-global.json"
     sing-box check -c "$PROFILE_DIR/proxy-split.json"
   else
