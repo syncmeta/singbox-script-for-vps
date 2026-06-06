@@ -22,12 +22,14 @@ scp root@VPS_IP:/root/singb/singb-profiles.zip .
 
 压缩包里有 6 个配置：
 
-- `tun-global.json`：TUN 全局代理
-- `tun-split.json`：TUN 分流，国内域名/IP 直连
-- `proxy-global.json`：本地 mixed 代理，全局走 VLESS Reality
-- `proxy-split.json`：本地 mixed 代理，国内域名/IP 直连
-- `proxy-hy2-global.json`：本地 mixed 代理，全局走 Hysteria2
-- `proxy-hy2-split.json`：本地 mixed 代理，国内域名/IP 直连
+文件名会加 VPS IP 前缀，例如 `VPS_IP-tun-split.json`：
+
+- `VPS_IP-tun-global.json`：TUN 全局代理
+- `VPS_IP-tun-split.json`：TUN 分流，国内域名/IP 直连
+- `VPS_IP-proxy-global.json`：本地 mixed 代理，全局走 VLESS Reality
+- `VPS_IP-proxy-split.json`：本地 mixed 代理，国内域名/IP 直连
+- `VPS_IP-proxy-hy2-global.json`：本地 mixed 代理，全局走 Hysteria2
+- `VPS_IP-proxy-hy2-split.json`：本地 mixed 代理，国内域名/IP 直连
 
 iOS 用前两个。
 
@@ -94,6 +96,8 @@ singb profiles
 ```bash
 singb edit proxy-split
 ```
+
+管理命令可以继续用短配置名；实际 JSON 文件名会自动带 VPS IP 前缀。
 
 根据已保存密钥重新生成服务端和客户端配置：
 
@@ -175,7 +179,7 @@ singb regen
 singb links
 ```
 
-然后在客户端删除旧配置，重新导入 `tun-split.json`。
+然后在客户端删除旧配置，重新导入 `VPS_IP-tun-split.json`。
 
 如果客户端能导入但无法连接，先看 VPS：
 
@@ -184,7 +188,7 @@ singb status
 singb logs
 ```
 
-再确认服务商防火墙放行了 TCP/443 和 UDP/443。全设备代理优先用 `tun-split.json`；`proxy-split.json` 只是在本机暴露 `127.0.0.1:7890` mixed 代理。
+再确认服务商防火墙放行了 TCP/443 和 UDP/443。全设备代理优先用 `VPS_IP-tun-split.json`；`VPS_IP-proxy-split.json` 只是在本机暴露 `127.0.0.1:7890` mixed 代理。
 
 ## 安全
 

@@ -92,6 +92,35 @@ write_env_var() {
   printf '%s=%s\n' "$key" "$(quote_value "$value")"
 }
 
+profile_ids() {
+  printf '%s\n' \
+    tun-global \
+    tun-split \
+    proxy-global \
+    proxy-split \
+    proxy-hy2-global \
+    proxy-hy2-split
+}
+
+profile_filename() {
+  local profile="$1"
+  printf '%s-%s.json' "$SERVER_IP" "$profile"
+}
+
+profile_path() {
+  local profile="$1"
+  printf '%s/%s' "$PROFILE_DIR" "$(profile_filename "$profile")"
+}
+
+remove_generated_profile_files() {
+  local dir="$1"
+  local profile
+  for profile in $(profile_ids); do
+    rm -f "$dir/$profile.json" "$dir"/*-"$profile.json"
+  done
+  rm -f "$dir"/tun-legacy-global.json "$dir"/tun-legacy-split.json
+}
+
 usage() {
   cat <<'EOF'
 用法:
@@ -119,6 +148,7 @@ usage() {
   proxy-split
   proxy-hy2-global
   proxy-hy2-split
+  实际生成的 JSON 文件名会加服务器 IP 前缀，例如 SERVER_IP-proxy-split.json
 
 安装选项:
   --out-dir DIR             私有输出目录，默认 /root/singb
@@ -849,15 +879,15 @@ write_profiles() {
   info "正在生成 sing-box 客户端配置"
   install -d -m 700 "$PRIVATE_DIR"
   install -d -m 700 "$PROFILE_DIR"
-  rm -f "$PROFILE_DIR"/tun-legacy-global.json "$PROFILE_DIR"/tun-legacy-split.json
-  rm -f "$PRIVATE_DIR"/tun-legacy-global.json "$PRIVATE_DIR"/tun-legacy-split.json
+  remove_generated_profile_files "$PROFILE_DIR"
+  remove_generated_profile_files "$PRIVATE_DIR"
 
-  write_tun_profile "$PROFILE_DIR/tun-global.json" global
-  write_tun_profile "$PROFILE_DIR/tun-split.json" split
-  write_proxy_profile "$PROFILE_DIR/proxy-global.json" global
-  write_proxy_profile "$PROFILE_DIR/proxy-split.json" split
-  write_hy2_proxy_profile "$PROFILE_DIR/proxy-hy2-global.json" global
-  write_hy2_proxy_profile "$PROFILE_DIR/proxy-hy2-split.json" split
+  write_tun_profile "$(profile_path tun-global)" global
+  write_tun_profile "$(profile_path tun-split)" split
+  write_proxy_profile "$(profile_path proxy-global)" global
+  write_proxy_profile "$(profile_path proxy-split)" split
+  write_hy2_proxy_profile "$(profile_path proxy-hy2-global)" global
+  write_hy2_proxy_profile "$(profile_path proxy-hy2-split)" split
   chmod 600 "$PROFILE_DIR"/*.json
 
   cp "$PROFILE_DIR"/*.json "$PRIVATE_DIR"/
@@ -868,12 +898,12 @@ write_profiles() {
   write_private_readme
 
   if command -v sing-box >/dev/null 2>&1; then
-    check_client_profile "$PROFILE_DIR/tun-global.json"
-    check_client_profile "$PROFILE_DIR/tun-split.json"
-    check_client_profile "$PROFILE_DIR/proxy-global.json"
-    check_client_profile "$PROFILE_DIR/proxy-split.json"
-    check_client_profile "$PROFILE_DIR/proxy-hy2-global.json"
-    check_client_profile "$PROFILE_DIR/proxy-hy2-split.json"
+    check_client_profile "$(profile_path tun-global)"
+    check_client_profile "$(profile_path tun-split)"
+    check_client_profile "$(profile_path proxy-global)"
+    check_client_profile "$(profile_path proxy-split)"
+    check_client_profile "$(profile_path proxy-hy2-global)"
+    check_client_profile "$(profile_path proxy-hy2-split)"
   else
     warn "VPS 上未安装 sing-box CLI，已跳过本地客户端配置校验。"
   fi
@@ -925,26 +955,33 @@ EOF
 
 write_private_readme() {
   local archive_path="$PRIVATE_DIR/$PROFILE_ARCHIVE_NAME"
+  local tun_global_name tun_split_name proxy_global_name proxy_split_name proxy_hy2_global_name proxy_hy2_split_name
+  tun_global_name="$(profile_filename tun-global)"
+  tun_split_name="$(profile_filename tun-split)"
+  proxy_global_name="$(profile_filename proxy-global)"
+  proxy_split_name="$(profile_filename proxy-split)"
+  proxy_hy2_global_name="$(profile_filename proxy-hy2-global)"
+  proxy_hy2_split_name="$(profile_filename proxy-hy2-split)"
   cat > "$PRIVATE_DIR/README.txt" <<EOF
 代理部署信息：$SERVER_IP
 
 本地客户端配置文件：
-$PROFILE_DIR/tun-global.json
-$PROFILE_DIR/tun-split.json
-$PROFILE_DIR/proxy-global.json
-$PROFILE_DIR/proxy-split.json
-$PROFILE_DIR/proxy-hy2-global.json
-$PROFILE_DIR/proxy-hy2-split.json
+$PROFILE_DIR/$tun_global_name
+$PROFILE_DIR/$tun_split_name
+$PROFILE_DIR/$proxy_global_name
+$PROFILE_DIR/$proxy_split_name
+$PROFILE_DIR/$proxy_hy2_global_name
+$PROFILE_DIR/$proxy_hy2_split_name
 
 推荐导入：
 iOS/SFM 全局或分流：
-  tun-split.json
+  $tun_split_name
 
 桌面/浏览器仅代理：
-  proxy-split.json
+  $proxy_split_name
 
 Hysteria2 仅代理：
-  proxy-hy2-split.json
+  $proxy_hy2_split_name
 
 端口说明：
 代理流量使用 TCP/$XRAY_PORT 的 VLESS Reality 和 UDP/$HY2_PORT 的 Hysteria2。
@@ -977,6 +1014,9 @@ EOF
 profile_bundle_text() {
   load_config
   local archive_path="$PRIVATE_DIR/$PROFILE_ARCHIVE_NAME"
+  local tun_split_name proxy_split_name
+  tun_split_name="$(profile_filename tun-split)"
+  proxy_split_name="$(profile_filename proxy-split)"
   cat <<EOF
 配置包：
   $archive_path
@@ -985,8 +1025,8 @@ profile_bundle_text() {
   scp root@$SERVER_IP:$archive_path .
 
 解压后导入需要的 JSON，例如：
-  tun-split.json
-  proxy-split.json
+  $tun_split_name
+  $proxy_split_name
 EOF
 }
 
@@ -1006,12 +1046,12 @@ bundle_profiles() {
   (
     cd "$PROFILE_DIR"
     python3 -m zipfile -c "$archive_path" \
-      tun-global.json \
-      tun-split.json \
-      proxy-global.json \
-      proxy-split.json \
-      proxy-hy2-global.json \
-      proxy-hy2-split.json
+      "$(profile_filename tun-global)" \
+      "$(profile_filename tun-split)" \
+      "$(profile_filename proxy-global)" \
+      "$(profile_filename proxy-split)" \
+      "$(profile_filename proxy-hy2-global)" \
+      "$(profile_filename proxy-hy2-split)"
   )
   chmod 600 "$archive_path"
 
@@ -1100,14 +1140,18 @@ install_command() {
 }
 
 print_done() {
+  local tun_split_name proxy_split_name proxy_hy2_split_name
+  tun_split_name="$(profile_filename tun-split)"
+  proxy_split_name="$(profile_filename proxy-split)"
+  proxy_hy2_split_name="$(profile_filename proxy-hy2-split)"
   cat <<EOF
 
 ==> 安装完成
 
 推荐导入：
-  iOS/SFM：tun-split
-  桌面/浏览器仅代理：proxy-split
-  Hysteria2 仅代理：proxy-hy2-split
+  iOS/SFM：$tun_split_name
+  桌面/浏览器仅代理：$proxy_split_name
+  Hysteria2 仅代理：$proxy_hy2_split_name
 
 端口说明：
   代理流量使用 TCP/$XRAY_PORT 的 VLESS Reality 和 UDP/$HY2_PORT 的 Hysteria2。
@@ -1128,19 +1172,23 @@ EOF
 
 links_command() {
   load_config
+  local tun_split_name proxy_split_name proxy_hy2_split_name
+  tun_split_name="$(profile_filename tun-split)"
+  proxy_split_name="$(profile_filename proxy-split)"
+  proxy_hy2_split_name="$(profile_filename proxy-hy2-split)"
   cat <<EOF
 sing-box 客户端配置包：
 
 $(profile_bundle_text)
 
 推荐优先导入：
-  proxy-split.json
+  $proxy_split_name
 
 全设备 TUN 导入：
-  tun-split.json
+  $tun_split_name
 
 Hysteria2 仅代理：
-  proxy-hy2-split.json
+  $proxy_hy2_split_name
 
 本地配置目录：
   $PROFILE_DIR
@@ -1193,13 +1241,18 @@ profiles_command() {
 
 profile_path_for_name() {
   local name="$1"
-  case "$name" in
-    tun-global|tun-global.json) printf '%s/tun-global.json' "$PROFILE_DIR" ;;
-    tun-split|tun-split.json) printf '%s/tun-split.json' "$PROFILE_DIR" ;;
-    proxy-global|proxy-global.json) printf '%s/proxy-global.json' "$PROFILE_DIR" ;;
-    proxy-split|proxy-split.json) printf '%s/proxy-split.json' "$PROFILE_DIR" ;;
-    proxy-hy2-global|proxy-hy2-global.json) printf '%s/proxy-hy2-global.json' "$PROFILE_DIR" ;;
-    proxy-hy2-split|proxy-hy2-split.json) printf '%s/proxy-hy2-split.json' "$PROFILE_DIR" ;;
+  local base="${name##*/}"
+  base="${base%.json}"
+  if [[ "$base" == "$SERVER_IP"-* ]]; then
+    base="${base#"$SERVER_IP"-}"
+  fi
+  case "$base" in
+    tun-global) profile_path tun-global ;;
+    tun-split) profile_path tun-split ;;
+    proxy-global) profile_path proxy-global ;;
+    proxy-split) profile_path proxy-split ;;
+    proxy-hy2-global) profile_path proxy-hy2-global ;;
+    proxy-hy2-split) profile_path proxy-hy2-split ;;
     *) return 1 ;;
   esac
 }
