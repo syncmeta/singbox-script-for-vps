@@ -12,7 +12,7 @@ Install Xray + Hysteria2 on a fresh Debian/Ubuntu VPS, generate sing-box
 client profiles, publish import URLs, and install the singbox-vps manager.
 
 Options:
-  --publish-port PORT       HTTP port for remote profile import. Default: 8080
+  --publish-port PORT       HTTP port for JSON profile import only. Default: 8080
   --out-dir DIR             Private output dir. Default: /root/singbox-vps
   --server-ip IP            Override public IPv4 detection
   --xray-sni DOMAIN         Reality SNI. Default: www.cloudflare.com
@@ -117,7 +117,7 @@ Profiles:
   proxy-hy2-split
 
 Install options:
-  --publish-port PORT       HTTP port for remote profile import. Default: 8080
+  --publish-port PORT       HTTP port for JSON profile import only. Default: 8080
   --out-dir DIR             Private output dir. Default: /root/singbox-vps
   --server-ip IP            Override public IPv4 detection
   --xray-sni DOMAIN         Reality SNI. Default: www.cloudflare.com
@@ -924,17 +924,22 @@ $PROFILE_DIR/proxy-split.json
 $PROFILE_DIR/proxy-hy2-global.json
 $PROFILE_DIR/proxy-hy2-split.json
 
-Recommended first import:
-proxy-split.json
-
-Modern TUN import:
-tun-split.json
+Recommended imports:
+iOS/SFM:
+  tun-split.json
 
 Legacy iOS fallback:
-tun-legacy-split.json
+  tun-legacy-split.json
+
+Desktop/browser proxy-only:
+  proxy-split.json
 
 Hysteria2 proxy import:
-proxy-hy2-split.json
+  proxy-hy2-split.json
+
+Port note:
+$PUBLISH_PORT is only the HTTP port for downloading JSON profile files.
+Proxy traffic uses TCP/$XRAY_PORT for VLESS Reality and UDP/$HY2_PORT for Hysteria2.
 
 Remote profile URLs:
 $(profile_links_text)
@@ -1138,17 +1143,15 @@ print_done() {
 
 ==> Install complete
 
-Recommended profile:
-  proxy-split
+Recommended imports:
+  iOS/SFM: tun-split
+  Legacy iOS fallback: tun-legacy-split
+  Desktop/browser proxy-only: proxy-split
+  Hysteria2 proxy-only: proxy-hy2-split
 
-Modern TUN profile:
-  tun-split
-
-Legacy iOS fallback:
-  tun-legacy-split
-
-Hysteria2 proxy profile:
-  proxy-hy2-split
+Port note:
+  $PUBLISH_PORT is only the HTTP port for downloading JSON profile files.
+  Proxy traffic uses TCP/$XRAY_PORT for VLESS Reality and UDP/$HY2_PORT for Hysteria2.
 
 Remote import URLs:
 $(profile_links_text)

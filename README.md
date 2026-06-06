@@ -34,7 +34,7 @@ bash /tmp/singbox-vps-install.sh --server-ip YOUR_SERVER_IP
 - Root access
 - TCP/443 open for VLESS Reality
 - UDP/443 open for Hysteria2
-- TCP/8080 open for remote sing-box profile import, unless changed with `--publish-port`
+- TCP/8080 open only for remote sing-box profile import, unless changed with `--publish-port`
 
 ## What Gets Installed
 
@@ -69,7 +69,9 @@ http://VPS_IP:8080/RANDOM_TOKEN/proxy-hy2-global.json
 http://VPS_IP:8080/RANDOM_TOKEN/proxy-hy2-split.json
 ```
 
-Use those URLs in SFM or any sing-box client that supports remote profile import.
+The `:8080` port is only a small HTTP server for downloading these JSON profile files. It is not a proxy port. Actual proxy traffic uses TCP/443 for VLESS Reality and UDP/443 for Hysteria2.
+
+Use those URLs in SFM or any sing-box client that supports remote profile import. If you do not want to expose the import server on `8080`, use `--publish-port PORT` to change it or `--no-publish` and copy the generated profiles manually.
 
 To view the links again later:
 
@@ -77,13 +79,7 @@ To view the links again later:
 singbox-vps links
 ```
 
-Recommended first profile:
-
-```text
-proxy-split.json
-```
-
-Modern TUN profile:
+Recommended for iOS/SFM:
 
 ```text
 tun-split.json
@@ -93,6 +89,12 @@ Legacy iOS fallback:
 
 ```text
 tun-legacy-split.json
+```
+
+Desktop/browser proxy-only:
+
+```text
+proxy-split.json
 ```
 
 Hysteria2 proxy-only profile:
