@@ -1,32 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MANAGER_BIN="/usr/local/bin/singbox-vps"
+MANAGER_BIN="/usr/local/bin/singb"
+OLD_MANAGER_BIN="/usr/local/bin/singbox-vps"
 
 usage() {
   cat <<'EOF'
-Usage:
-  bash install.sh [options]
+用法:
+  bash install.sh [选项]
 
-Install Xray + Hysteria2 on a fresh Debian/Ubuntu VPS, generate sing-box
-client profiles, publish import URLs, and install the singbox-vps manager.
+在 Debian/Ubuntu VPS 上安装 Xray + Hysteria2，生成 sing-box 客户端配置，
+发布远程导入链接，并安装 `singb` 管理命令。
 
-Options:
-  --publish-port PORT       HTTP port for JSON profile import only. Default: 8080
-  --out-dir DIR             Private output dir. Default: /root/singbox-vps
-  --server-ip IP            Override public IPv4 detection
-  --xray-sni DOMAIN         Reality SNI. Default: www.cloudflare.com
-  --xray-dest HOST:PORT     Reality dest. Default: www.cloudflare.com:443
-  --no-publish              Do not expose profile URLs over HTTP
-  -h, --help                Show this help
+选项:
+  --publish-port PORT       JSON 配置导入用 HTTP 端口，默认 8080
+  --out-dir DIR             私有输出目录，默认 /root/singb
+  --server-ip IP            手动指定服务器公网 IPv4
+  --xray-sni DOMAIN         Reality SNI，默认 www.cloudflare.com
+  --xray-dest HOST:PORT     Reality 回落目标，默认 www.cloudflare.com:443
+  --no-publish              不通过 HTTP 暴露远程配置链接
+  -h, --help                显示帮助
 
-After install:
-  singbox-vps links
-  singbox-vps status
-  singbox-vps edit proxy-split
-  singbox-vps regen
+安装后常用命令:
+  singb links
+  singb status
+  singb edit proxy-split
+  singb regen
 
-Maintenance:
+维护:
   bash install.sh uninstall [--purge-binaries]
 EOF
 }
@@ -37,7 +38,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 if [[ "$(id -u)" != "0" ]]; then
-  echo "Run this installer as root on the VPS." >&2
+  echo "请在 VPS 上用 root 运行安装脚本。" >&2
   exit 1
 fi
 
@@ -47,32 +48,39 @@ write_manager() {
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="singbox-vps"
-CONFIG_DIR="/etc/singbox-vps"
+APP_NAME="singb"
+CONFIG_DIR="/etc/singb"
 CONFIG_FILE="$CONFIG_DIR/config.env"
 STATE_FILE="$CONFIG_DIR/state.env"
-PRIVATE_DIR="/root/singbox-vps"
-PROFILE_DIR="/var/lib/singbox-vps/profiles"
-PROFILE_WEB_ROOT="/var/www/singbox-vps"
-PROFILE_SERVICE="/etc/systemd/system/singbox-vps-profile-server.service"
+PRIVATE_DIR="/root/singb"
+PROFILE_DIR="/var/lib/singb/profiles"
+PROFILE_WEB_ROOT="/var/www/singb"
+PROFILE_SERVICE="/etc/systemd/system/singb-profile-server.service"
 XRAY_CONFIG="/usr/local/etc/xray/config.json"
 HY2_CONFIG="/etc/hysteria/config.yaml"
+OLD_CONFIG_DIR="/etc/singbox-vps"
+OLD_CONFIG_FILE="$OLD_CONFIG_DIR/config.env"
+OLD_STATE_FILE="$OLD_CONFIG_DIR/state.env"
+OLD_PRIVATE_DIR="/root/singbox-vps"
+OLD_PROFILE_DIR="/var/lib/singbox-vps/profiles"
+OLD_PROFILE_WEB_ROOT="/var/www/singbox-vps"
+OLD_PROFILE_SERVICE="/etc/systemd/system/singbox-vps-profile-server.service"
 
 info() {
   printf '==> %s\n' "$*"
 }
 
 warn() {
-  printf 'WARN: %s\n' "$*" >&2
+  printf '警告: %s\n' "$*" >&2
 }
 
 die() {
-  printf 'ERROR: %s\n' "$*" >&2
+  printf '错误: %s\n' "$*" >&2
   exit 1
 }
 
 require_root() {
-  [[ "$(id -u)" == "0" ]] || die "Run as root."
+  [[ "$(id -u)" == "0" ]] || die "请使用 root 运行。"
 }
 
 quote_value() {
@@ -87,45 +95,43 @@ write_env_var() {
 
 usage() {
   cat <<'EOF'
-Usage:
-  singbox-vps <command> [options]
+用法:
+  singb <命令> [选项]
 
-Commands:
-  install [options]         Install or repair the VPS deployment
-  uninstall [options]       Stop services and remove generated deployment files
-  links                     Show remote sing-box profile import URLs
-  status                    Show service and listener status
-  config                    Show config files and current settings
-  profiles                  List generated local profile files
-  edit <profile>            Edit a generated profile, then republish it
-  regen                     Regenerate server/client configs from saved state
-  publish                   Republish current generated profiles
-  restart                   Restart Xray, Hysteria2, and profile server
-  rotate-token              Replace only the remote profile URL token
-  rotate-secrets            Regenerate node credentials and profiles
-  logs                      Show recent service logs
-  help                      Show this help
+命令:
+  install [选项]             安装或修复 VPS 部署
+  uninstall [选项]           停止服务并删除生成的配置
+  links                     显示远程 sing-box 配置导入链接
+  status                    查看服务和端口监听状态
+  config                    查看配置文件路径和当前参数
+  profiles                  列出本地生成的客户端配置
+  edit <配置名>             编辑指定客户端配置并重新发布
+  regen                     根据已保存状态重新生成服务端和客户端配置
+  publish                   重新发布当前客户端配置
+  restart                   重启 Xray、Hysteria2 和配置发布服务
+  rotate-token              只更换远程配置链接 token
+  rotate-secrets            重新生成节点密钥和客户端配置
+  logs                      查看最近服务日志
+  help                      显示帮助
 
-Profiles:
+配置名:
   tun-global
   tun-split
-  tun-legacy-global
-  tun-legacy-split
   proxy-global
   proxy-split
   proxy-hy2-global
   proxy-hy2-split
 
-Install options:
-  --publish-port PORT       HTTP port for JSON profile import only. Default: 8080
-  --out-dir DIR             Private output dir. Default: /root/singbox-vps
-  --server-ip IP            Override public IPv4 detection
-  --xray-sni DOMAIN         Reality SNI. Default: www.cloudflare.com
-  --xray-dest HOST:PORT     Reality dest. Default: www.cloudflare.com:443
-  --no-publish              Do not expose profile URLs over HTTP
+安装选项:
+  --publish-port PORT       JSON 配置导入用 HTTP 端口，默认 8080
+  --out-dir DIR             私有输出目录，默认 /root/singb
+  --server-ip IP            手动指定服务器公网 IPv4
+  --xray-sni DOMAIN         Reality SNI，默认 www.cloudflare.com
+  --xray-dest HOST:PORT     Reality 回落目标，默认 www.cloudflare.com:443
+  --no-publish              不通过 HTTP 暴露远程配置链接
 
-Uninstall options:
-  --purge-binaries          Also remove Xray and Hysteria2 binaries/service units
+卸载选项:
+  --purge-binaries          同时删除 Xray 和 Hysteria2 程序及服务文件
 EOF
 }
 
@@ -135,19 +141,19 @@ valid_port() {
 }
 
 detect_os() {
-  [[ -r /etc/os-release ]] || die "Cannot read /etc/os-release."
+  [[ -r /etc/os-release ]] || die "无法读取 /etc/os-release。"
   . /etc/os-release
   case "${ID:-}" in
     debian|ubuntu) ;;
     *)
       case " ${ID_LIKE:-} " in
         *" debian "*) ;;
-        *) die "Unsupported OS: ${PRETTY_NAME:-unknown}. Use Debian or Ubuntu." ;;
+        *) die "不支持的系统：${PRETTY_NAME:-unknown}。请使用 Debian 或 Ubuntu。" ;;
       esac
       ;;
   esac
-  command -v systemctl >/dev/null 2>&1 || die "systemd is required."
-  command -v apt-get >/dev/null 2>&1 || die "apt-get is required."
+  command -v systemctl >/dev/null 2>&1 || die "缺少 systemd。"
+  command -v apt-get >/dev/null 2>&1 || die "缺少 apt-get。"
 }
 
 detect_public_ip() {
@@ -167,16 +173,43 @@ init_defaults() {
   PUBLISH_ENABLED="${PUBLISH_ENABLED:-1}"
   XRAY_SNI="${XRAY_SNI:-www.cloudflare.com}"
   XRAY_DEST="${XRAY_DEST:-www.cloudflare.com:443}"
-  PRIVATE_DIR="${PRIVATE_DIR:-/root/singbox-vps}"
-  PROFILE_DIR="${PROFILE_DIR:-/var/lib/singbox-vps/profiles}"
-  PROFILE_WEB_ROOT="${PROFILE_WEB_ROOT:-/var/www/singbox-vps}"
+  PRIVATE_DIR="${PRIVATE_DIR:-/root/singb}"
+  PROFILE_DIR="${PROFILE_DIR:-/var/lib/singb/profiles}"
+  PROFILE_WEB_ROOT="${PROFILE_WEB_ROOT:-/var/www/singb}"
   XRAY_PORT="${XRAY_PORT:-443}"
   HY2_PORT="${HY2_PORT:-443}"
   HY2_OBFS_TYPE="${HY2_OBFS_TYPE:-salamander}"
 }
 
+migrate_old_layout() {
+  [[ -r "$CONFIG_FILE" || ! -r "$OLD_CONFIG_FILE" ]] && return 0
+  info "检测到旧版配置，正在迁移到 singb"
+
+  # shellcheck disable=SC1090
+  . "$OLD_CONFIG_FILE"
+  SERVER_IP="${SERVER_IP:-}"
+  PUBLISH_PORT="${PUBLISH_PORT:-8080}"
+  PUBLISH_ENABLED="${PUBLISH_ENABLED:-1}"
+  XRAY_SNI="${XRAY_SNI:-www.cloudflare.com}"
+  XRAY_DEST="${XRAY_DEST:-www.cloudflare.com:443}"
+  XRAY_PORT="${XRAY_PORT:-443}"
+  HY2_PORT="${HY2_PORT:-443}"
+  PRIVATE_DIR="/root/singb"
+  PROFILE_DIR="/var/lib/singb/profiles"
+  PROFILE_WEB_ROOT="/var/www/singb"
+  write_config_file
+
+  if [[ -r "$OLD_STATE_FILE" ]]; then
+    cp -a "$OLD_STATE_FILE" "$STATE_FILE"
+    chmod 600 "$STATE_FILE"
+  fi
+}
+
 load_config() {
   init_defaults
+  if [[ "$(id -u)" == "0" ]]; then
+    migrate_old_layout
+  fi
   if [[ -r "$CONFIG_FILE" ]]; then
     # shellcheck disable=SC1090
     . "$CONFIG_FILE"
@@ -223,7 +256,7 @@ write_state_file() {
 }
 
 install_packages() {
-  info "Installing base packages"
+  info "正在安装基础软件包"
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y \
     ca-certificates \
@@ -243,6 +276,11 @@ remove_path() {
   fi
 }
 
+disable_old_profile_service() {
+  systemctl disable --now "$(basename "$OLD_PROFILE_SERVICE")" >/dev/null 2>&1 || true
+  remove_path "$OLD_PROFILE_SERVICE"
+}
+
 uninstall_command() {
   local purge_binaries=0
   while [[ $# -gt 0 ]]; do
@@ -253,36 +291,43 @@ uninstall_command() {
         ;;
       -h|--help)
         cat <<'EOF'
-Usage:
-  singbox-vps uninstall [--purge-binaries]
+用法:
+  singb uninstall [--purge-binaries]
 
-Stops singbox-vps services and removes generated config/profile files.
-By default it keeps Xray and Hysteria2 binaries in place so reinstall is faster.
+停止 singb 服务并删除生成的配置文件。
+默认保留 Xray 和 Hysteria2 程序，方便之后快速重装。
 EOF
         return 0
         ;;
       *)
-        die "Unknown uninstall option: $1"
+        die "未知卸载选项: $1"
         ;;
     esac
   done
 
   require_root
-  info "Stopping services"
+  info "正在停止服务"
   systemctl disable --now "$(basename "$PROFILE_SERVICE")" >/dev/null 2>&1 || true
+  disable_old_profile_service
   systemctl disable --now xray >/dev/null 2>&1 || true
   systemctl disable --now hysteria-server >/dev/null 2>&1 || true
 
-  info "Removing singbox-vps generated files"
+  info "正在删除 singb 生成的文件"
   remove_path "$PROFILE_SERVICE"
   remove_path "$CONFIG_DIR"
   remove_path "$PRIVATE_DIR"
   remove_path "$PROFILE_DIR"
   remove_path "$PROFILE_WEB_ROOT"
+  remove_path "$OLD_CONFIG_DIR"
+  remove_path "$OLD_PRIVATE_DIR"
+  remove_path "$OLD_PROFILE_DIR"
+  remove_path "$OLD_PROFILE_WEB_ROOT"
+  remove_path /usr/local/bin/singbox-vps
+  remove_path /etc/sysctl.d/99-singb-bbr.conf
   remove_path /etc/sysctl.d/99-singbox-vps-bbr.conf
 
   if (( purge_binaries == 1 )); then
-    info "Removing Xray and Hysteria2 binaries/service files"
+    info "正在删除 Xray 和 Hysteria2 程序及服务文件"
     remove_path /usr/local/bin/xray
     remove_path /usr/local/share/xray
     remove_path /usr/local/etc/xray
@@ -295,14 +340,14 @@ EOF
   fi
 
   systemctl daemon-reload
-  info "Uninstall complete"
+  info "卸载完成"
 }
 
 enable_bbr() {
-  info "Applying TCP BBR tuning"
+  info "正在启用 TCP BBR 优化"
   sysctl -w net.core.default_qdisc=fq >/dev/null || true
   sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null || true
-  cat > /etc/sysctl.d/99-singbox-vps-bbr.conf <<'EOF'
+  cat > /etc/sysctl.d/99-singb-bbr.conf <<'EOF'
 net.core.default_qdisc=fq
 net.ipv4.tcp_congestion_control=bbr
 EOF
@@ -329,20 +374,20 @@ check_port_conflicts() {
 
   if [[ -n "$tcp443" && "$tcp443" != *xray* ]]; then
     printf '%s\n' "$tcp443" >&2
-    die "TCP/$XRAY_PORT is already in use."
+    die "TCP/$XRAY_PORT 已被占用。"
   fi
   if [[ -n "$udp443" && "$udp443" != *hysteria* ]]; then
     printf '%s\n' "$udp443" >&2
-    die "UDP/$HY2_PORT is already in use."
+    die "UDP/$HY2_PORT 已被占用。"
   fi
   if [[ -n "$pub" && "$pub" != *python3* ]]; then
     printf '%s\n' "$pub" >&2
-    die "TCP/$PUBLISH_PORT is already in use."
+    die "TCP/$PUBLISH_PORT 已被占用。"
   fi
 }
 
 install_xray() {
-  info "Installing Xray"
+  info "正在安装 Xray"
   curl -L --fail --show-error --retry 3 --connect-timeout 10 \
     -o /tmp/xray-install-release.sh \
     https://github.com/XTLS/Xray-install/raw/main/install-release.sh
@@ -372,7 +417,7 @@ install_xray() {
 }
 
 install_hysteria2() {
-  info "Installing Hysteria2"
+  info "正在安装 Hysteria2"
   curl -fsSL --show-error --retry 3 --connect-timeout 10 \
     -o /tmp/hysteria-install.sh \
     https://get.hy2.sh/
@@ -385,7 +430,7 @@ install_hysteria2() {
 }
 
 generate_xray_secrets() {
-  command -v /usr/local/bin/xray >/dev/null 2>&1 || die "Xray binary not found."
+  command -v /usr/local/bin/xray >/dev/null 2>&1 || die "找不到 Xray 程序。"
 
   XRAY_UUID="$(/usr/local/bin/xray uuid)"
   local keys
@@ -396,7 +441,7 @@ generate_xray_secrets() {
 
   if [[ -z "$XRAY_PRIVATE_KEY" || -z "$XRAY_PUBLIC_KEY" ]]; then
     printf '%s\n' "$keys" >&2
-    die "Failed to parse Xray x25519 output."
+    die "解析 Xray x25519 输出失败。"
   fi
 }
 
@@ -413,7 +458,7 @@ generate_profile_token() {
 ensure_hy2_cert() {
   install -d -m 750 -o hysteria -g hysteria /etc/hysteria
   if [[ ! -s /etc/hysteria/server.key || ! -s /etc/hysteria/server.crt ]]; then
-    info "Generating Hysteria2 self-signed certificate"
+    info "正在生成 Hysteria2 自签证书"
     openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 3650 \
       -keyout /etc/hysteria/server.key \
       -out /etc/hysteria/server.crt \
@@ -438,10 +483,10 @@ ensure_state() {
   if [[ -z "${SERVER_IP:-}" ]]; then
     SERVER_IP="$(detect_public_ip)"
   fi
-  [[ -n "$SERVER_IP" ]] || die "Could not detect public IPv4. Use --server-ip IP."
-  valid_port "$PUBLISH_PORT" || die "Invalid publish port: $PUBLISH_PORT"
-  valid_port "$XRAY_PORT" || die "Invalid Xray port: $XRAY_PORT"
-  valid_port "$HY2_PORT" || die "Invalid Hysteria2 port: $HY2_PORT"
+  [[ -n "$SERVER_IP" ]] || die "无法检测公网 IPv4，请使用 --server-ip IP 指定。"
+  valid_port "$PUBLISH_PORT" || die "无效发布端口：$PUBLISH_PORT"
+  valid_port "$XRAY_PORT" || die "无效 Xray 端口：$XRAY_PORT"
+  valid_port "$HY2_PORT" || die "无效 Hysteria2 端口：$HY2_PORT"
 
   if [[ -z "${XRAY_UUID:-}" || -z "${XRAY_PRIVATE_KEY:-}" || -z "${XRAY_PUBLIC_KEY:-}" || -z "${XRAY_SHORT_ID:-}" ]]; then
     generate_xray_secrets
@@ -465,7 +510,7 @@ backup_file() {
 }
 
 write_xray_config() {
-  info "Writing Xray config"
+  info "正在写入 Xray 配置"
   install -d -m 755 /usr/local/etc/xray
   backup_file "$XRAY_CONFIG"
   cat > "$XRAY_CONFIG" <<EOF
@@ -527,7 +572,7 @@ EOF
 }
 
 write_hysteria_config() {
-  info "Writing Hysteria2 config"
+  info "正在写入 Hysteria2 配置"
   install -d -m 750 -o hysteria -g hysteria /etc/hysteria
   backup_file "$HY2_CONFIG"
   cat > "$HY2_CONFIG" <<EOF
@@ -560,17 +605,12 @@ EOF
 write_tun_profile() {
   local path="$1"
   local split="${2:-global}"
-  local legacy_dns="${3:-0}"
   local route_rule_set=""
   local cn_rules=""
+  local cn_dns_rules=""
   local dns_block=""
   local route_resolver=""
-  local hy2_cert_pin_line=""
-  local rule_set_download_client='"http_client": {"detour": "reality-tcp"},'
-
-  if [[ "$legacy_dns" == "1" ]]; then
-    rule_set_download_client='"download_detour": "reality-tcp",'
-  fi
+  local rule_set_download_client='"download_detour": "reality-tcp",'
 
   if [[ "$split" == "split" ]]; then
     route_rule_set='
@@ -595,24 +635,14 @@ write_tun_profile() {
     cn_rules='
       {"domain_suffix": [".cn", ".中国", ".中國"], "action": "route", "outbound": "direct"},
       {"rule_set": ["geosite-cn", "geoip-cn"], "action": "route", "outbound": "direct"},'
+    cn_dns_rules='
+    "rules": [
+      {"domain_suffix": [".cn", ".中国", ".中國"], "server": "local"},
+      {"rule_set": "geosite-cn", "server": "local"}
+    ],'
   fi
 
-  if [[ "$legacy_dns" == "1" ]]; then
-    dns_block='  "dns": {
-    "servers": [
-      {
-        "tag": "cloudflare-doh",
-        "address": "https://1.1.1.1/dns-query",
-        "detour": "reality-tcp",
-        "strategy": "prefer_ipv4"
-      },
-      {"tag": "local", "address": "local"}
-    ],
-    "final": "cloudflare-doh",
-    "strategy": "prefer_ipv4"
-  },'
-  else
-    dns_block='  "dns": {
+  dns_block='  "dns": {
     "servers": [
       {
         "type": "https",
@@ -622,15 +652,12 @@ write_tun_profile() {
         "detour": "reality-tcp"
       },
       {"type": "local", "tag": "local"}
-    ],
+    ],'"$cn_dns_rules"'
     "final": "cloudflare-doh",
     "strategy": "prefer_ipv4"
   },'
-    route_resolver='
+  route_resolver='
     "default_domain_resolver": {"server": "cloudflare-doh", "strategy": "prefer_ipv4"},'
-    hy2_cert_pin_line=',
-        "certificate_public_key_sha256": ["'"$HY2_TLS_CERT_PUBKEY_SHA256"'"]'
-  fi
 
   cat > "$path" <<EOF
 {
@@ -678,7 +705,8 @@ $dns_block
       "tls": {
         "enabled": true,
         "server_name": "$SERVER_IP",
-        "insecure": true$hy2_cert_pin_line
+        "insecure": true,
+        "certificate_public_key_sha256": ["$HY2_TLS_CERT_PUBKEY_SHA256"]
       }
     },
     {"type": "direct", "tag": "direct"},
@@ -687,6 +715,7 @@ $dns_block
   "route": {
     "auto_detect_interface": true,$route_resolver$route_rule_set
     "rules": [
+      {"action": "sniff"},
       {"network": ["tcp", "udp"], "port": 53, "action": "hijack-dns"},
       {"protocol": ["dns"], "action": "hijack-dns"},
       {"ip_cidr": ["$SERVER_IP/32"], "action": "route", "outbound": "direct"},
@@ -764,6 +793,7 @@ write_proxy_profile() {
   ],
   "route": {$route_rule_set
     "rules": [
+      {"action": "sniff"},
       {"ip_cidr": ["$SERVER_IP/32"], "action": "route", "outbound": "direct"},
       {"ip_is_private": true, "action": "route", "outbound": "direct"},$cn_rules
       {"protocol": ["bittorrent"], "action": "route", "outbound": "block"}
@@ -832,6 +862,7 @@ write_hy2_proxy_profile() {
   ],
   "route": {$route_rule_set
     "rules": [
+      {"action": "sniff"},
       {"ip_cidr": ["$SERVER_IP/32"], "action": "route", "outbound": "direct"},
       {"ip_is_private": true, "action": "route", "outbound": "direct"},$cn_rules
       {"protocol": ["bittorrent"], "action": "route", "outbound": "block"}
@@ -843,14 +874,14 @@ EOF
 }
 
 write_profiles() {
-  info "Writing sing-box client profiles"
+  info "正在生成 sing-box 客户端配置"
   install -d -m 700 "$PRIVATE_DIR"
   install -d -m 700 "$PROFILE_DIR"
+  rm -f "$PROFILE_DIR"/tun-legacy-global.json "$PROFILE_DIR"/tun-legacy-split.json
+  rm -f "$PRIVATE_DIR"/tun-legacy-global.json "$PRIVATE_DIR"/tun-legacy-split.json
 
   write_tun_profile "$PROFILE_DIR/tun-global.json" global
   write_tun_profile "$PROFILE_DIR/tun-split.json" split
-  write_tun_profile "$PROFILE_DIR/tun-legacy-global.json" global 1
-  write_tun_profile "$PROFILE_DIR/tun-legacy-split.json" split 1
   write_proxy_profile "$PROFILE_DIR/proxy-global.json" global
   write_proxy_profile "$PROFILE_DIR/proxy-split.json" split
   write_hy2_proxy_profile "$PROFILE_DIR/proxy-hy2-global.json" global
@@ -867,21 +898,19 @@ write_profiles() {
   if command -v sing-box >/dev/null 2>&1; then
     check_client_profile "$PROFILE_DIR/tun-global.json"
     check_client_profile "$PROFILE_DIR/tun-split.json"
-    ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true check_client_profile "$PROFILE_DIR/tun-legacy-global.json"
-    ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true check_client_profile "$PROFILE_DIR/tun-legacy-split.json"
     check_client_profile "$PROFILE_DIR/proxy-global.json"
     check_client_profile "$PROFILE_DIR/proxy-split.json"
     check_client_profile "$PROFILE_DIR/proxy-hy2-global.json"
     check_client_profile "$PROFILE_DIR/proxy-hy2-split.json"
   else
-    warn "sing-box CLI not installed on this VPS; skipped local client-config checks."
+    warn "VPS 上未安装 sing-box CLI，已跳过本地客户端配置校验。"
   fi
 }
 
 check_client_profile() {
   local profile="$1"
   if ! sing-box check -c "$profile"; then
-    warn "sing-box CLI could not validate $profile; continuing because client profile compatibility depends on the client version."
+    warn "sing-box CLI 未通过 $profile 校验；继续执行，因为客户端兼容性取决于导入端版本。"
   fi
 }
 
@@ -924,72 +953,64 @@ EOF
 
 write_private_readme() {
   cat > "$PRIVATE_DIR/README.txt" <<EOF
-Proxy setup for $SERVER_IP
+代理部署信息：$SERVER_IP
 
-Local profile files:
+本地客户端配置文件：
 $PROFILE_DIR/tun-global.json
 $PROFILE_DIR/tun-split.json
-$PROFILE_DIR/tun-legacy-global.json
-$PROFILE_DIR/tun-legacy-split.json
 $PROFILE_DIR/proxy-global.json
 $PROFILE_DIR/proxy-split.json
 $PROFILE_DIR/proxy-hy2-global.json
 $PROFILE_DIR/proxy-hy2-split.json
 
-Recommended imports:
-iOS/SFM:
+推荐导入：
+iOS/SFM 全局或分流：
   tun-split.json
 
-Legacy iOS fallback:
-  tun-legacy-split.json
-
-Desktop/browser proxy-only:
+桌面/浏览器仅代理：
   proxy-split.json
 
-Hysteria2 proxy import:
+Hysteria2 仅代理：
   proxy-hy2-split.json
 
-Port note:
-$PUBLISH_PORT is only the HTTP port for downloading JSON profile files.
-Proxy traffic uses TCP/$XRAY_PORT for VLESS Reality and UDP/$HY2_PORT for Hysteria2.
+端口说明：
+$PUBLISH_PORT 只用于下载 JSON 客户端配置，不是代理端口。
+代理流量使用 TCP/$XRAY_PORT 的 VLESS Reality 和 UDP/$HY2_PORT 的 Hysteria2。
 
-Remote profile URLs:
+远程配置链接：
 $(profile_links_text)
 
-Raw node URIs are in:
+原始节点 URI：
 $PRIVATE_DIR/import-uris.txt
 
-Config files:
+配置文件：
 $CONFIG_FILE
 $STATE_FILE
 
-Common commands:
-singbox-vps links
-singbox-vps edit proxy-split
-singbox-vps regen
-singbox-vps rotate-token
+常用命令：
+singb links
+singb edit proxy-split
+singb regen
+singb rotate-token
 
-Security note:
-Remote profile URLs contain usable client credentials inside the JSON.
-Keep the random token private.
+安全说明：
+远程配置 JSON 里包含可用客户端凭据，请不要泄露随机 token。
 EOF
   chmod 600 "$PRIVATE_DIR/README.txt"
 }
 
 profile_links_text() {
   if [[ "${PUBLISH_ENABLED:-1}" != "1" ]]; then
-    printf 'Publishing disabled.\n'
+    printf '远程配置发布已关闭。\n'
     return 0
   fi
   if [[ -z "${PROFILE_TOKEN:-}" ]]; then
-    printf 'Profile token is missing. Run: singbox-vps regen\n'
+    printf '缺少配置链接 token，请运行：singb regen\n'
     return 0
   fi
   cat <<EOF
 http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/tun-global.json
 http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/tun-split.json
-http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/tun-legacy-global.json
-http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/tun-legacy-split.json
 http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/proxy-global.json
 http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/proxy-split.json
 http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/proxy-hy2-global.json
@@ -1000,7 +1021,7 @@ EOF
 write_profile_service() {
   cat > "$PROFILE_SERVICE" <<EOF
 [Unit]
-Description=singbox-vps remote profile HTTP server
+Description=singb 远程配置 HTTP 服务
 After=network-online.target
 Wants=network-online.target
 
@@ -1020,22 +1041,22 @@ EOF
 
 publish_profiles() {
   load_config
+  disable_old_profile_service
   if [[ "${PUBLISH_ENABLED:-1}" != "1" ]]; then
     if [[ -f "$PROFILE_SERVICE" ]]; then
       systemctl disable --now "$(basename "$PROFILE_SERVICE")" >/dev/null 2>&1 || true
     fi
-    info "Profile publishing is disabled."
+    info "远程配置发布已关闭。"
     return 0
   fi
 
-  [[ -n "${PROFILE_TOKEN:-}" ]] || die "PROFILE_TOKEN is missing. Run singbox-vps regen."
+  [[ -n "${PROFILE_TOKEN:-}" ]] || die "缺少 PROFILE_TOKEN，请运行：singb regen"
   install -d -m 755 "$PROFILE_WEB_ROOT"
   local public_dir="$PROFILE_WEB_ROOT/$PROFILE_TOKEN"
   install -d -m 755 "$public_dir"
+  rm -f "$public_dir"/tun-legacy-global.json "$public_dir"/tun-legacy-split.json
   cp "$PROFILE_DIR"/tun-global.json "$public_dir/"
   cp "$PROFILE_DIR"/tun-split.json "$public_dir/"
-  cp "$PROFILE_DIR"/tun-legacy-global.json "$public_dir/"
-  cp "$PROFILE_DIR"/tun-legacy-split.json "$public_dir/"
   cp "$PROFILE_DIR"/proxy-global.json "$public_dir/"
   cp "$PROFILE_DIR"/proxy-split.json "$public_dir/"
   cp "$PROFILE_DIR"/proxy-hy2-global.json "$public_dir/"
@@ -1043,7 +1064,7 @@ publish_profiles() {
   chmod 644 "$public_dir"/*.json
 
   cat > "$public_dir/index.txt" <<EOF
-sing-box remote profile URLs:
+sing-box 远程配置链接：
 
 $(profile_links_text)
 EOF
@@ -1090,27 +1111,27 @@ parse_install_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --publish-port)
-        [[ $# -ge 2 ]] || die "--publish-port requires a value."
+        [[ $# -ge 2 ]] || die "--publish-port 需要一个端口值。"
         PUBLISH_PORT="$2"
         shift 2
         ;;
       --out-dir)
-        [[ $# -ge 2 ]] || die "--out-dir requires a value."
+        [[ $# -ge 2 ]] || die "--out-dir 需要一个目录。"
         PRIVATE_DIR="$2"
         shift 2
         ;;
       --server-ip)
-        [[ $# -ge 2 ]] || die "--server-ip requires a value."
+        [[ $# -ge 2 ]] || die "--server-ip 需要一个 IP。"
         SERVER_IP="$2"
         shift 2
         ;;
       --xray-sni)
-        [[ $# -ge 2 ]] || die "--xray-sni requires a value."
+        [[ $# -ge 2 ]] || die "--xray-sni 需要一个域名。"
         XRAY_SNI="$2"
         shift 2
         ;;
       --xray-dest)
-        [[ $# -ge 2 ]] || die "--xray-dest requires a value."
+        [[ $# -ge 2 ]] || die "--xray-dest 需要 HOST:PORT。"
         XRAY_DEST="$2"
         shift 2
         ;;
@@ -1123,7 +1144,7 @@ parse_install_args() {
         exit 0
         ;;
       *)
-        die "Unknown install option: $1"
+        die "未知安装选项：$1"
         ;;
     esac
   done
@@ -1131,6 +1152,8 @@ parse_install_args() {
 
 install_command() {
   require_root
+  migrate_old_layout
+  load_config
   parse_install_args "$@"
   detect_os
   install_packages
@@ -1138,10 +1161,11 @@ install_command() {
   if [[ -z "${SERVER_IP:-}" ]]; then
     SERVER_IP="$(detect_public_ip)"
   fi
-  [[ -n "$SERVER_IP" ]] || die "Could not detect public IPv4. Use --server-ip IP."
-  valid_port "$PUBLISH_PORT" || die "Invalid --publish-port: $PUBLISH_PORT"
+  [[ -n "$SERVER_IP" ]] || die "无法检测公网 IPv4，请使用 --server-ip IP 指定。"
+  valid_port "$PUBLISH_PORT" || die "无效 --publish-port：$PUBLISH_PORT"
 
   write_config_file
+  disable_old_profile_service
   check_port_conflicts
   enable_bbr
   install_xray
@@ -1153,28 +1177,27 @@ install_command() {
 print_done() {
   cat <<EOF
 
-==> Install complete
+==> 安装完成
 
-Recommended imports:
-  iOS/SFM: tun-split
-  Legacy iOS fallback: tun-legacy-split
-  Desktop/browser proxy-only: proxy-split
-  Hysteria2 proxy-only: proxy-hy2-split
+推荐导入：
+  iOS/SFM：tun-split
+  桌面/浏览器仅代理：proxy-split
+  Hysteria2 仅代理：proxy-hy2-split
 
-Port note:
-  $PUBLISH_PORT is only the HTTP port for downloading JSON profile files.
-  Proxy traffic uses TCP/$XRAY_PORT for VLESS Reality and UDP/$HY2_PORT for Hysteria2.
+端口说明：
+  $PUBLISH_PORT 只用于下载 JSON 客户端配置，不是代理端口。
+  代理流量使用 TCP/$XRAY_PORT 的 VLESS Reality 和 UDP/$HY2_PORT 的 Hysteria2。
 
-Remote import URLs:
+远程导入链接：
 $(profile_links_text)
 
-Manage later:
-  singbox-vps links
-  singbox-vps status
-  singbox-vps edit proxy-split
-  singbox-vps regen
+后续管理：
+  singb links
+  singb status
+  singb edit proxy-split
+  singb regen
 
-Private files:
+私有文件：
   $PRIVATE_DIR
 EOF
 }
@@ -1182,39 +1205,36 @@ EOF
 links_command() {
   load_config
   cat <<EOF
-Remote sing-box profile URLs:
+远程 sing-box 配置链接：
 
 $(profile_links_text)
 
-Recommended first import:
+推荐优先导入：
   proxy-split.json
 
-Modern TUN import:
+全设备 TUN 导入：
   tun-split.json
 
-Legacy iOS fallback:
-  tun-legacy-split.json
-
-Hysteria2 proxy import:
+Hysteria2 仅代理：
   proxy-hy2-split.json
 
-Local profile directory:
+本地配置目录：
   $PROFILE_DIR
 EOF
 }
 
 status_command() {
   load_config
-  echo "Services:"
+  echo "服务："
   systemctl is-active xray 2>/dev/null | sed 's/^/  xray: /' || true
   systemctl is-active hysteria-server 2>/dev/null | sed 's/^/  hysteria-server: /' || true
   if [[ "${PUBLISH_ENABLED:-1}" == "1" ]]; then
     systemctl is-active "$(basename "$PROFILE_SERVICE")" 2>/dev/null | sed 's/^/  profile-server: /' || true
   else
-    echo "  profile-server: disabled"
+    echo "  profile-server: 已关闭"
   fi
   echo
-  echo "Listeners:"
+  echo "端口监听："
   ss -H -tlnp "sport = :$XRAY_PORT" || true
   ss -H -ulnp "sport = :$HY2_PORT" || true
   if [[ "${PUBLISH_ENABLED:-1}" == "1" ]]; then
@@ -1225,22 +1245,22 @@ status_command() {
 config_command() {
   load_config
   cat <<EOF
-Config:
+配置文件：
   $CONFIG_FILE
 
-State:
+状态文件：
   $STATE_FILE
 
-Private output:
+私有输出目录：
   $PRIVATE_DIR
 
-Profiles:
+客户端配置目录：
   $PROFILE_DIR
 
-Profile web root:
+远程配置 Web 根目录：
   $PROFILE_WEB_ROOT
 
-Current settings:
+当前参数：
   SERVER_IP=$SERVER_IP
   XRAY_SNI=$XRAY_SNI
   XRAY_DEST=$XRAY_DEST
@@ -1261,8 +1281,6 @@ profile_path_for_name() {
   case "$name" in
     tun-global|tun-global.json) printf '%s/tun-global.json' "$PROFILE_DIR" ;;
     tun-split|tun-split.json) printf '%s/tun-split.json' "$PROFILE_DIR" ;;
-    tun-legacy-global|tun-legacy-global.json) printf '%s/tun-legacy-global.json' "$PROFILE_DIR" ;;
-    tun-legacy-split|tun-legacy-split.json) printf '%s/tun-legacy-split.json' "$PROFILE_DIR" ;;
     proxy-global|proxy-global.json) printf '%s/proxy-global.json' "$PROFILE_DIR" ;;
     proxy-split|proxy-split.json) printf '%s/proxy-split.json' "$PROFILE_DIR" ;;
     proxy-hy2-global|proxy-hy2-global.json) printf '%s/proxy-hy2-global.json' "$PROFILE_DIR" ;;
@@ -1274,10 +1292,10 @@ profile_path_for_name() {
 edit_command() {
   require_root
   load_config
-  [[ $# -ge 1 ]] || die "Usage: singbox-vps edit <profile>"
+  [[ $# -ge 1 ]] || die "用法：singb edit <配置名>"
   local path
-  path="$(profile_path_for_name "$1")" || die "Unknown profile: $1"
-  [[ -f "$path" ]] || die "Profile does not exist: $path"
+  path="$(profile_path_for_name "$1")" || die "未知配置名：$1"
+  [[ -f "$path" ]] || die "配置文件不存在：$path"
 
   local editor="${EDITOR:-}"
   if [[ -z "$editor" ]]; then
@@ -1296,7 +1314,7 @@ edit_command() {
   cp "$path" "$PRIVATE_DIR/$(basename "$path")"
   chmod 600 "$PRIVATE_DIR/$(basename "$path")"
   publish_profiles
-  info "Published updated profile: $(basename "$path")"
+  info "已发布更新后的配置：$(basename "$path")"
 }
 
 rotate_token_command() {
@@ -1355,7 +1373,7 @@ main() {
     help|-h|--help) usage ;;
     *)
       usage >&2
-      die "Unknown command: $command"
+      die "未知命令：$command"
       ;;
   esac
 }
@@ -1366,6 +1384,9 @@ MANAGER_EOF
 }
 
 write_manager
+if [[ -e "$OLD_MANAGER_BIN" || -L "$OLD_MANAGER_BIN" ]]; then
+  rm -f -- "$OLD_MANAGER_BIN"
+fi
 case "${1:-}" in
   install|uninstall|links|status|config|profiles|edit|regen|publish|restart|rotate-token|rotate-secrets|logs|help|-h|--help)
     exec "$MANAGER_BIN" "$@"

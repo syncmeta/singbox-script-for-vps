@@ -21,6 +21,20 @@
         "tag": "local"
       }
     ],
+    "rules": [
+      {
+        "domain_suffix": [
+          ".cn",
+          ".中国",
+          ".中國"
+        ],
+        "server": "local"
+      },
+      {
+        "rule_set": "geosite-cn",
+        "server": "local"
+      }
+    ],
     "final": "cloudflare-doh",
     "strategy": "prefer_ipv4"
   },
@@ -105,7 +119,7 @@
         "tag": "geosite-cn",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-        "http_client": {"detour": "reality-tcp"},
+        "download_detour": "reality-tcp",
         "update_interval": "1d"
       },
       {
@@ -113,11 +127,14 @@
         "tag": "geoip-cn",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
-        "http_client": {"detour": "reality-tcp"},
+        "download_detour": "reality-tcp",
         "update_interval": "1d"
       }
     ],
     "rules": [
+      {
+        "action": "sniff"
+      },
       {
         "network": [
           "tcp",
