@@ -565,6 +565,7 @@ write_tun_profile() {
   local cn_rules=""
   local dns_block=""
   local route_resolver=""
+  local hy2_cert_pin_line=""
 
   if [[ "$split" == "split" ]]; then
     route_rule_set='
@@ -622,6 +623,8 @@ write_tun_profile() {
   },'
     route_resolver='
     "default_domain_resolver": {"server": "cloudflare-doh", "strategy": "prefer_ipv4"},'
+    hy2_cert_pin_line=',
+        "certificate_public_key_sha256": ["'"$HY2_TLS_CERT_PUBKEY_SHA256"'"]'
   fi
 
   cat > "$path" <<EOF
@@ -670,8 +673,7 @@ $dns_block
       "tls": {
         "enabled": true,
         "server_name": "$SERVER_IP",
-        "insecure": true,
-        "certificate_public_key_sha256": ["$HY2_TLS_CERT_PUBKEY_SHA256"]
+        "insecure": true$hy2_cert_pin_line
       }
     },
     {"type": "direct", "tag": "direct"},

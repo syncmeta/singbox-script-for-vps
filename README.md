@@ -196,8 +196,8 @@ singbox-vps publish
 
 - `tun-global.json`: TUN mode, full proxy
 - `tun-split.json`: TUN mode, CN direct
-- `tun-legacy-global.json`: TUN mode, full proxy, legacy DNS format for old iOS clients
-- `tun-legacy-split.json`: TUN mode, CN direct, legacy DNS format for old iOS clients
+- `tun-legacy-global.json`: TUN mode, full proxy, legacy DNS format and no Hysteria2 certificate pin for old iOS clients
+- `tun-legacy-split.json`: TUN mode, CN direct, legacy DNS format and no Hysteria2 certificate pin for old iOS clients
 - `proxy-global.json`: local mixed proxy, VLESS Reality, full proxy
 - `proxy-split.json`: local mixed proxy, VLESS Reality, CN direct
 - `proxy-hy2-global.json`: local mixed proxy, Hysteria2, full proxy
@@ -210,6 +210,8 @@ tun-split.json
 ```
 
 If an older iOS client reports `dns.servers[0].type: unknown field "type"`, use `tun-legacy-split.json` instead.
+
+The legacy TUN profiles also omit the Hysteria2 `certificate_public_key_sha256` pin because some older iOS builds do not recognize that field.
 
 ## Troubleshooting
 
@@ -236,6 +238,8 @@ singbox-vps links
 Then delete the old profile on iOS and import the new `tun-legacy-split.json` URL.
 
 If iOS shows deprecation warnings about `legacy DNS servers` or missing `route.default_domain_resolver`, import `tun-split.json` instead of `tun-legacy-split.json`.
+
+If iOS reports `outbounds[1].tls.certificate_public_key_sha256: unknown field`, regenerate profiles and import `tun-legacy-split.json`.
 
 If a desktop client can import a profile but cannot connect, check the VPS first:
 

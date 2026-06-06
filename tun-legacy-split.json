@@ -77,10 +77,7 @@
       "tls": {
         "enabled": true,
         "server_name": "203.0.113.10",
-        "insecure": true,
-        "certificate_public_key_sha256": [
-          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
-        ]
+        "insecure": true
       }
     },
     {
