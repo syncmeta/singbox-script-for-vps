@@ -12,7 +12,7 @@ One-command VPS setup for:
 Run as root on a fresh Debian/Ubuntu VPS:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<user>/<repo>/main/install.sh -o /tmp/singbox-vps-install.sh
+curl -fsSL https://raw.githubusercontent.com/syncmeta/singbox-script-for-vps/main/install.sh -o /tmp/singbox-vps-install.sh
 bash /tmp/singbox-vps-install.sh
 ```
 
