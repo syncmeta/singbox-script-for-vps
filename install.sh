@@ -9,16 +9,14 @@ usage() {
 用法:
   bash install.sh [选项]
 
-在 Debian/Ubuntu VPS 上安装 Xray + Hysteria2，生成 sing-box 客户端配置，
-发布远程导入链接，并安装 `singb` 管理命令。
+在 Debian/Ubuntu VPS 上安装 Xray + Hysteria2，生成 sing-box 客户端配置包，
+并安装 `singb` 管理命令。
 
 选项:
-  --publish-port PORT       JSON 配置导入用 HTTP 端口，默认 8080
   --out-dir DIR             私有输出目录，默认 /root/singb
   --server-ip IP            手动指定服务器公网 IPv4
   --xray-sni DOMAIN         Reality SNI，默认 www.cloudflare.com
   --xray-dest HOST:PORT     Reality 回落目标，默认 www.cloudflare.com:443
-  --no-publish              不通过 HTTP 暴露远程配置链接
   -h, --help                显示帮助
 
 安装后常用命令:
@@ -54,6 +52,7 @@ CONFIG_FILE="$CONFIG_DIR/config.env"
 STATE_FILE="$CONFIG_DIR/state.env"
 PRIVATE_DIR="/root/singb"
 PROFILE_DIR="/var/lib/singb/profiles"
+PROFILE_ARCHIVE_NAME="singb-profiles.zip"
 PROFILE_WEB_ROOT="/var/www/singb"
 PROFILE_SERVICE="/etc/systemd/system/singb-profile-server.service"
 XRAY_CONFIG="/usr/local/etc/xray/config.json"
@@ -101,15 +100,14 @@ usage() {
 命令:
   install [选项]             安装或修复 VPS 部署
   uninstall [选项]           停止服务并删除生成的配置
-  links                     显示远程 sing-box 配置导入链接
+  links                     显示配置包路径和 scp 下载命令
   status                    查看服务和端口监听状态
   config                    查看配置文件路径和当前参数
   profiles                  列出本地生成的客户端配置
-  edit <配置名>             编辑指定客户端配置并重新发布
+  edit <配置名>             编辑指定客户端配置并重新打包
   regen                     根据已保存状态重新生成服务端和客户端配置
-  publish                   重新发布当前客户端配置
-  restart                   重启 Xray、Hysteria2 和配置发布服务
-  rotate-token              只更换远程配置链接 token
+  bundle                    重新打包当前客户端配置
+  restart                   重启 Xray 和 Hysteria2
   rotate-secrets            重新生成节点密钥和客户端配置
   logs                      查看最近服务日志
   help                      显示帮助
@@ -123,12 +121,10 @@ usage() {
   proxy-hy2-split
 
 安装选项:
-  --publish-port PORT       JSON 配置导入用 HTTP 端口，默认 8080
   --out-dir DIR             私有输出目录，默认 /root/singb
   --server-ip IP            手动指定服务器公网 IPv4
   --xray-sni DOMAIN         Reality SNI，默认 www.cloudflare.com
   --xray-dest HOST:PORT     Reality 回落目标，默认 www.cloudflare.com:443
-  --no-publish              不通过 HTTP 暴露远程配置链接
 
 卸载选项:
   --purge-binaries          同时删除 Xray 和 Hysteria2 程序及服务文件
@@ -169,8 +165,6 @@ detect_public_ip() {
 
 init_defaults() {
   SERVER_IP="${SERVER_IP:-}"
-  PUBLISH_PORT="${PUBLISH_PORT:-8080}"
-  PUBLISH_ENABLED="${PUBLISH_ENABLED:-1}"
   XRAY_SNI="${XRAY_SNI:-www.cloudflare.com}"
   XRAY_DEST="${XRAY_DEST:-www.cloudflare.com:443}"
   PRIVATE_DIR="${PRIVATE_DIR:-/root/singb}"
@@ -188,8 +182,6 @@ migrate_old_layout() {
   # shellcheck disable=SC1090
   . "$OLD_CONFIG_FILE"
   SERVER_IP="${SERVER_IP:-}"
-  PUBLISH_PORT="${PUBLISH_PORT:-8080}"
-  PUBLISH_ENABLED="${PUBLISH_ENABLED:-1}"
   XRAY_SNI="${XRAY_SNI:-www.cloudflare.com}"
   XRAY_DEST="${XRAY_DEST:-www.cloudflare.com:443}"
   XRAY_PORT="${XRAY_PORT:-443}"
@@ -225,8 +217,6 @@ write_config_file() {
   install -d -m 700 "$CONFIG_DIR"
   {
     write_env_var SERVER_IP "$SERVER_IP"
-    write_env_var PUBLISH_PORT "$PUBLISH_PORT"
-    write_env_var PUBLISH_ENABLED "$PUBLISH_ENABLED"
     write_env_var XRAY_SNI "$XRAY_SNI"
     write_env_var XRAY_DEST "$XRAY_DEST"
     write_env_var PRIVATE_DIR "$PRIVATE_DIR"
@@ -250,7 +240,6 @@ write_state_file() {
     write_env_var HY2_OBFS_PASSWORD "$HY2_OBFS_PASSWORD"
     write_env_var HY2_TLS_PIN_SHA256 "$HY2_TLS_PIN_SHA256"
     write_env_var HY2_TLS_CERT_PUBKEY_SHA256 "$HY2_TLS_CERT_PUBKEY_SHA256"
-    write_env_var PROFILE_TOKEN "$PROFILE_TOKEN"
   } > "$STATE_FILE"
   chmod 600 "$STATE_FILE"
 }
@@ -364,13 +353,9 @@ port_owner() {
 }
 
 check_port_conflicts() {
-  local tcp443 udp443 pub
+  local tcp443 udp443
   tcp443="$(port_owner tcp "$XRAY_PORT")"
   udp443="$(port_owner udp "$HY2_PORT")"
-  pub=""
-  if [[ "$PUBLISH_ENABLED" == "1" ]]; then
-    pub="$(port_owner tcp "$PUBLISH_PORT")"
-  fi
 
   if [[ -n "$tcp443" && "$tcp443" != *xray* ]]; then
     printf '%s\n' "$tcp443" >&2
@@ -379,10 +364,6 @@ check_port_conflicts() {
   if [[ -n "$udp443" && "$udp443" != *hysteria* ]]; then
     printf '%s\n' "$udp443" >&2
     die "UDP/$HY2_PORT 已被占用。"
-  fi
-  if [[ -n "$pub" && "$pub" != *python3* ]]; then
-    printf '%s\n' "$pub" >&2
-    die "TCP/$PUBLISH_PORT 已被占用。"
   fi
 }
 
@@ -451,10 +432,6 @@ generate_hy2_secrets() {
   HY2_OBFS_PASSWORD="$(openssl rand -hex 16)"
 }
 
-generate_profile_token() {
-  PROFILE_TOKEN="$(openssl rand -hex 18)"
-}
-
 ensure_hy2_cert() {
   install -d -m 750 -o hysteria -g hysteria /etc/hysteria
   if [[ ! -s /etc/hysteria/server.key || ! -s /etc/hysteria/server.crt ]]; then
@@ -484,7 +461,6 @@ ensure_state() {
     SERVER_IP="$(detect_public_ip)"
   fi
   [[ -n "$SERVER_IP" ]] || die "无法检测公网 IPv4，请使用 --server-ip IP 指定。"
-  valid_port "$PUBLISH_PORT" || die "无效发布端口：$PUBLISH_PORT"
   valid_port "$XRAY_PORT" || die "无效 Xray 端口：$XRAY_PORT"
   valid_port "$HY2_PORT" || die "无效 Hysteria2 端口：$HY2_PORT"
 
@@ -494,10 +470,6 @@ ensure_state() {
   if [[ -z "${HY2_PASSWORD:-}" || -z "${HY2_OBFS_PASSWORD:-}" ]]; then
     generate_hy2_secrets
   fi
-  if [[ -z "${PROFILE_TOKEN:-}" ]]; then
-    generate_profile_token
-  fi
-
   ensure_hy2_cert
   write_config_file
   write_state_file
@@ -952,6 +924,7 @@ EOF
 }
 
 write_private_readme() {
+  local archive_path="$PRIVATE_DIR/$PROFILE_ARCHIVE_NAME"
   cat > "$PRIVATE_DIR/README.txt" <<EOF
 代理部署信息：$SERVER_IP
 
@@ -974,11 +947,13 @@ Hysteria2 仅代理：
   proxy-hy2-split.json
 
 端口说明：
-$PUBLISH_PORT 只用于下载 JSON 客户端配置，不是代理端口。
 代理流量使用 TCP/$XRAY_PORT 的 VLESS Reality 和 UDP/$HY2_PORT 的 Hysteria2。
 
-远程配置链接：
-$(profile_links_text)
+配置包：
+$archive_path
+
+下载到本机：
+scp root@$SERVER_IP:$archive_path .
 
 原始节点 URI：
 $PRIVATE_DIR/import-uris.txt
@@ -991,96 +966,56 @@ $STATE_FILE
 singb links
 singb edit proxy-split
 singb regen
-singb rotate-token
+singb bundle
 
 安全说明：
-远程配置 JSON 里包含可用客户端凭据，请不要泄露随机 token。
+配置包里包含可用客户端凭据，请只通过 SSH/SCP 等可信通道下载。
 EOF
   chmod 600 "$PRIVATE_DIR/README.txt"
 }
 
-profile_links_text() {
-  if [[ "${PUBLISH_ENABLED:-1}" != "1" ]]; then
-    printf '远程配置发布已关闭。\n'
-    return 0
-  fi
-  if [[ -z "${PROFILE_TOKEN:-}" ]]; then
-    printf '缺少配置链接 token，请运行：singb regen\n'
-    return 0
-  fi
+profile_bundle_text() {
+  load_config
+  local archive_path="$PRIVATE_DIR/$PROFILE_ARCHIVE_NAME"
   cat <<EOF
-http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/tun-global.json
-http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/tun-split.json
-http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/proxy-global.json
-http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/proxy-split.json
-http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/proxy-hy2-global.json
-http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/proxy-hy2-split.json
+配置包：
+  $archive_path
+
+下载到本机：
+  scp root@$SERVER_IP:$archive_path .
+
+解压后导入需要的 JSON，例如：
+  tun-split.json
+  proxy-split.json
 EOF
 }
 
-write_profile_service() {
-  cat > "$PROFILE_SERVICE" <<EOF
-[Unit]
-Description=singb 远程配置 HTTP 服务
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=nobody
-Group=nogroup
-WorkingDirectory=$PROFILE_WEB_ROOT
-ExecStart=/usr/bin/python3 -m http.server $PUBLISH_PORT --bind 0.0.0.0
-Restart=on-failure
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOF
-}
-
-publish_profiles() {
+bundle_profiles() {
   load_config
   disable_old_profile_service
-  if [[ "${PUBLISH_ENABLED:-1}" != "1" ]]; then
-    if [[ -f "$PROFILE_SERVICE" ]]; then
-      systemctl disable --now "$(basename "$PROFILE_SERVICE")" >/dev/null 2>&1 || true
-    fi
-    info "远程配置发布已关闭。"
-    return 0
+  if [[ -f "$PROFILE_SERVICE" ]]; then
+    systemctl disable --now "$(basename "$PROFILE_SERVICE")" >/dev/null 2>&1 || true
+    remove_path "$PROFILE_SERVICE"
   fi
+  remove_path "$PROFILE_WEB_ROOT"
+  remove_path "$OLD_PROFILE_WEB_ROOT"
 
-  [[ -n "${PROFILE_TOKEN:-}" ]] || die "缺少 PROFILE_TOKEN，请运行：singb regen"
-  install -d -m 755 "$PROFILE_WEB_ROOT"
-  local public_dir="$PROFILE_WEB_ROOT/$PROFILE_TOKEN"
-  install -d -m 755 "$public_dir"
-  rm -f "$public_dir"/tun-legacy-global.json "$public_dir"/tun-legacy-split.json
-  cp "$PROFILE_DIR"/tun-global.json "$public_dir/"
-  cp "$PROFILE_DIR"/tun-split.json "$public_dir/"
-  cp "$PROFILE_DIR"/proxy-global.json "$public_dir/"
-  cp "$PROFILE_DIR"/proxy-split.json "$public_dir/"
-  cp "$PROFILE_DIR"/proxy-hy2-global.json "$public_dir/"
-  cp "$PROFILE_DIR"/proxy-hy2-split.json "$public_dir/"
-  chmod 644 "$public_dir"/*.json
+  install -d -m 700 "$PRIVATE_DIR"
+  local archive_path="$PRIVATE_DIR/$PROFILE_ARCHIVE_NAME"
+  rm -f "$archive_path"
+  (
+    cd "$PROFILE_DIR"
+    python3 -m zipfile -c "$archive_path" \
+      tun-global.json \
+      tun-split.json \
+      proxy-global.json \
+      proxy-split.json \
+      proxy-hy2-global.json \
+      proxy-hy2-split.json
+  )
+  chmod 600 "$archive_path"
 
-  cat > "$public_dir/index.txt" <<EOF
-sing-box 远程配置链接：
-
-$(profile_links_text)
-EOF
-  chmod 644 "$public_dir/index.txt"
-
-  write_profile_service
-  systemctl daemon-reload
-  systemctl enable --now "$(basename "$PROFILE_SERVICE")"
-  systemctl restart "$(basename "$PROFILE_SERVICE")"
-  allow_ufw_publish_port
-}
-
-allow_ufw_publish_port() {
-  if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
-    ufw allow "$PUBLISH_PORT/tcp" >/dev/null || true
-  fi
+  info "已生成配置包：$archive_path"
 }
 
 restart_services() {
@@ -1089,10 +1024,6 @@ restart_services() {
   systemctl restart xray
   systemctl enable --now hysteria-server
   systemctl restart hysteria-server
-  if [[ "${PUBLISH_ENABLED:-1}" == "1" ]]; then
-    systemctl enable --now "$(basename "$PROFILE_SERVICE")"
-    systemctl restart "$(basename "$PROFILE_SERVICE")"
-  fi
 }
 
 regen_all() {
@@ -1102,7 +1033,7 @@ regen_all() {
   write_xray_config
   write_hysteria_config
   write_profiles
-  publish_profiles
+  bundle_profiles
   restart_services
 }
 
@@ -1110,11 +1041,6 @@ parse_install_args() {
   init_defaults
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --publish-port)
-        [[ $# -ge 2 ]] || die "--publish-port 需要一个端口值。"
-        PUBLISH_PORT="$2"
-        shift 2
-        ;;
       --out-dir)
         [[ $# -ge 2 ]] || die "--out-dir 需要一个目录。"
         PRIVATE_DIR="$2"
@@ -1135,9 +1061,9 @@ parse_install_args() {
         XRAY_DEST="$2"
         shift 2
         ;;
-      --no-publish)
-        PUBLISH_ENABLED=0
-        shift
+      --publish-port|--no-publish)
+        warn "$1 已废弃；配置文件现在只打包到 VPS 本地，通过 scp 下载。"
+        [[ "$1" == "--publish-port" && $# -ge 2 ]] && shift 2 || shift
         ;;
       -h|--help)
         usage
@@ -1162,7 +1088,6 @@ install_command() {
     SERVER_IP="$(detect_public_ip)"
   fi
   [[ -n "$SERVER_IP" ]] || die "无法检测公网 IPv4，请使用 --server-ip IP 指定。"
-  valid_port "$PUBLISH_PORT" || die "无效 --publish-port：$PUBLISH_PORT"
 
   write_config_file
   disable_old_profile_service
@@ -1185,11 +1110,10 @@ print_done() {
   Hysteria2 仅代理：proxy-hy2-split
 
 端口说明：
-  $PUBLISH_PORT 只用于下载 JSON 客户端配置，不是代理端口。
   代理流量使用 TCP/$XRAY_PORT 的 VLESS Reality 和 UDP/$HY2_PORT 的 Hysteria2。
 
-远程导入链接：
-$(profile_links_text)
+配置包下载：
+$(profile_bundle_text)
 
 后续管理：
   singb links
@@ -1205,9 +1129,9 @@ EOF
 links_command() {
   load_config
   cat <<EOF
-远程 sing-box 配置链接：
+sing-box 客户端配置包：
 
-$(profile_links_text)
+$(profile_bundle_text)
 
 推荐优先导入：
   proxy-split.json
@@ -1228,18 +1152,11 @@ status_command() {
   echo "服务："
   systemctl is-active xray 2>/dev/null | sed 's/^/  xray: /' || true
   systemctl is-active hysteria-server 2>/dev/null | sed 's/^/  hysteria-server: /' || true
-  if [[ "${PUBLISH_ENABLED:-1}" == "1" ]]; then
-    systemctl is-active "$(basename "$PROFILE_SERVICE")" 2>/dev/null | sed 's/^/  profile-server: /' || true
-  else
-    echo "  profile-server: 已关闭"
-  fi
+  echo "  profile-server: 已关闭（配置只打包，不公网发布）"
   echo
   echo "端口监听："
   ss -H -tlnp "sport = :$XRAY_PORT" || true
   ss -H -ulnp "sport = :$HY2_PORT" || true
-  if [[ "${PUBLISH_ENABLED:-1}" == "1" ]]; then
-    ss -H -tlnp "sport = :$PUBLISH_PORT" || true
-  fi
 }
 
 config_command() {
@@ -1257,8 +1174,8 @@ config_command() {
 客户端配置目录：
   $PROFILE_DIR
 
-远程配置 Web 根目录：
-  $PROFILE_WEB_ROOT
+客户端配置包：
+  $PRIVATE_DIR/$PROFILE_ARCHIVE_NAME
 
 当前参数：
   SERVER_IP=$SERVER_IP
@@ -1266,8 +1183,6 @@ config_command() {
   XRAY_DEST=$XRAY_DEST
   XRAY_PORT=$XRAY_PORT
   HY2_PORT=$HY2_PORT
-  PUBLISH_ENABLED=$PUBLISH_ENABLED
-  PUBLISH_PORT=$PUBLISH_PORT
 EOF
 }
 
@@ -1313,21 +1228,8 @@ edit_command() {
   chmod 600 "$path"
   cp "$path" "$PRIVATE_DIR/$(basename "$path")"
   chmod 600 "$PRIVATE_DIR/$(basename "$path")"
-  publish_profiles
-  info "已发布更新后的配置：$(basename "$path")"
-}
-
-rotate_token_command() {
-  require_root
-  load_config
-  local old_token="${PROFILE_TOKEN:-}"
-  generate_profile_token
-  write_state_file
-  if [[ "$old_token" =~ ^[a-f0-9]{36}$ && -n "${PROFILE_WEB_ROOT:-}" ]]; then
-    rm -rf -- "$PROFILE_WEB_ROOT/$old_token"
-  fi
-  publish_profiles
-  links_command
+  bundle_profiles
+  info "已更新并重新打包配置：$(basename "$path")"
 }
 
 rotate_secrets_command() {
@@ -1345,7 +1247,6 @@ logs_command() {
   journalctl \
     -u xray \
     -u hysteria-server \
-    -u "$(basename "$PROFILE_SERVICE")" \
     -n 120 \
     --no-pager || true
 }
@@ -1365,9 +1266,8 @@ main() {
     profiles) profiles_command "$@" ;;
     edit) edit_command "$@" ;;
     regen) regen_all "$@" ;;
-    publish) require_root; publish_profiles "$@" ;;
+    bundle) require_root; bundle_profiles "$@"; links_command ;;
     restart) require_root; load_config; restart_services "$@" ;;
-    rotate-token) rotate_token_command "$@" ;;
     rotate-secrets) rotate_secrets_command "$@" ;;
     logs) logs_command "$@" ;;
     help|-h|--help) usage ;;
@@ -1388,7 +1288,7 @@ if [[ -e "$OLD_MANAGER_BIN" || -L "$OLD_MANAGER_BIN" ]]; then
   rm -f -- "$OLD_MANAGER_BIN"
 fi
 case "${1:-}" in
-  install|uninstall|links|status|config|profiles|edit|regen|publish|restart|rotate-token|rotate-secrets|logs|help|-h|--help)
+  install|uninstall|links|status|config|profiles|edit|regen|bundle|restart|rotate-secrets|logs|help|-h|--help)
     exec "$MANAGER_BIN" "$@"
     ;;
   *)

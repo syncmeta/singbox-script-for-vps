@@ -1,26 +1,43 @@
-# singb
-
-一键在 VPS 上部署：
-
-- Xray VLESS Reality Vision，默认 TCP/443
-- Hysteria2，默认 UDP/443
-- sing-box 客户端 JSON 配置
-- `singb` 管理命令，用来查看链接、重新生成配置、编辑配置、轮换 token
-
-## 快速安装
-
-在 Debian/Ubuntu VPS 上用 root 执行：
+# VPS sing-box 部署脚本
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/syncmeta/singbox-script-for-vps/main/install.sh -o /tmp/singb-install.sh
 bash /tmp/singb-install.sh
 ```
 
-如果服务商防火墙不方便开放 8080，可以换远程配置下载端口：
+- TCP 流量走 Xray VLESS Reality Vision，默认端口 TCP/443
+- 其他流量走 Hysteria2，默认端口 UDP/443
+
+装完不会再开 HTTP 配置服务，只在 VPS 本地生成一个配置包：
+
+```text
+/root/singb/singb-profiles.zip
+```
+
+用 SSH 下载到本机：
 
 ```bash
-bash /tmp/singb-install.sh --publish-port 18080
+scp root@VPS_IP:/root/singb/singb-profiles.zip .
 ```
+
+下载后解压，按客户端场景导入里面的 JSON。iOS 可以把解压后的 JSON 通过 AirDrop、文件 App 或其他可信方式导入 SFM；macOS 直接导入本地文件即可。
+
+压缩包里有 6 个配置：
+
+- `tun-global.json`：TUN 全局代理
+- `tun-split.json`：TUN 分流，国内域名/IP 直连
+- `proxy-global.json`：本地 mixed 代理，全局走 VLESS Reality
+- `proxy-split.json`：本地 mixed 代理，国内域名/IP 直连
+- `proxy-hy2-global.json`：本地 mixed 代理，全局走 Hysteria2
+- `proxy-hy2-split.json`：本地 mixed 代理，国内域名/IP 直连
+
+通常优先用 `tun-split.json`。如果只想在桌面浏览器或应用里手动设置本地代理，用 `proxy-split.json`。
+
+分流配置使用 `geosite-cn` 和 `geoip-cn` 规则集。TUN 分流还会把国内域名规则交给本地 DNS 解析，并在兜底代理规则前启用 sniff，让按 IP 建连的国内流量也尽量保持直连。
+
+为了兼容当前常见的 sing-box 1.13.x 客户端，规则集下载仍使用 `download_detour` 字段。它在新版本里已标记废弃，但 1.13.x 不认识 1.14+ 的 `http_client` 字段。
+
+## 安装参数
 
 如果脚本无法自动识别公网 IPv4：
 
@@ -32,7 +49,6 @@ bash /tmp/singb-install.sh --server-ip 你的服务器IP
 
 - TCP/443：VLESS Reality
 - UDP/443：Hysteria2
-- TCP/8080：远程下载 JSON 配置，只有导入配置时用；可通过 `--publish-port` 修改
 
 ## 安装后的路径
 
@@ -42,57 +58,16 @@ bash /tmp/singb-install.sh --server-ip 你的服务器IP
 /etc/singb/state.env
 /root/singb/
 /var/lib/singb/profiles/
-/var/www/singb/<随机token>/
-/etc/systemd/system/singb-profile-server.service
+/root/singb/singb-profiles.zip
 ```
 
-`config.env` 保存可调整参数，比如服务器 IP、Reality SNI、发布端口。
+`config.env` 保存可调整参数，比如服务器 IP 和 Reality SNI。
 
-`state.env` 保存自动生成的密钥、UUID、Hysteria2 密码和远程配置 token。
-
-## 远程导入链接
-
-安装完成后会输出 6 个 JSON 配置链接：
-
-```text
-http://VPS_IP:8080/RANDOM_TOKEN/tun-global.json
-http://VPS_IP:8080/RANDOM_TOKEN/tun-split.json
-http://VPS_IP:8080/RANDOM_TOKEN/proxy-global.json
-http://VPS_IP:8080/RANDOM_TOKEN/proxy-split.json
-http://VPS_IP:8080/RANDOM_TOKEN/proxy-hy2-global.json
-http://VPS_IP:8080/RANDOM_TOKEN/proxy-hy2-split.json
-```
-
-`8080` 只是下载 JSON 配置的 HTTP 端口，不是代理端口。真正代理流量走 TCP/443 的 VLESS Reality 或 UDP/443 的 Hysteria2。
-
-推荐先导入：
-
-```text
-tun-split.json
-```
-
-桌面端只想开本地 mixed 代理时，用：
-
-```text
-proxy-split.json
-```
-
-## 配置说明
-
-- `tun-global.json`：TUN 全局代理
-- `tun-split.json`：TUN 分流，国内域名/IP 直连
-- `proxy-global.json`：本地 mixed 代理，全局走 VLESS Reality
-- `proxy-split.json`：本地 mixed 代理，国内域名/IP 直连
-- `proxy-hy2-global.json`：本地 mixed 代理，全局走 Hysteria2
-- `proxy-hy2-split.json`：本地 mixed 代理，国内域名/IP 直连
-
-分流配置使用 `geosite-cn` 和 `geoip-cn` 规则集。TUN 分流还会把国内域名规则交给本地 DNS 解析，并在兜底代理规则前启用 sniff，让按 IP 建连的国内流量也尽量保持直连。
-
-为了兼容当前常见的 sing-box 1.13.x 客户端，规则集下载仍使用 `download_detour` 字段。它在新版本里已标记废弃，但 1.13.x 不认识 1.14+ 的 `http_client` 字段。
+`state.env` 保存自动生成的密钥、UUID 和 Hysteria2 密码。
 
 ## 常用命令
 
-查看远程导入链接：
+查看配置包路径和 `scp` 下载命令：
 
 ```bash
 singb links
@@ -116,7 +91,7 @@ singb config
 singb profiles
 ```
 
-编辑某个客户端配置并重新发布：
+编辑某个客户端配置并重新打包：
 
 ```bash
 singb edit proxy-split
@@ -128,22 +103,16 @@ singb edit proxy-split
 singb regen
 ```
 
-只重新发布当前客户端配置：
+重新打包当前客户端配置。手动改过 `/var/lib/singb/profiles/*.json` 后，用这个命令刷新 zip：
 
 ```bash
-singb publish
+singb bundle
 ```
 
 重启服务：
 
 ```bash
 singb restart
-```
-
-只更换远程配置链接 token：
-
-```bash
-singb rotate-token
 ```
 
 重新生成节点密钥和客户端配置：
@@ -185,10 +154,10 @@ singb regen
 singb edit proxy-split
 ```
 
-手动改 `/var/lib/singb/profiles/*.json` 后重新发布：
+手动改 `/var/lib/singb/profiles/*.json` 后重新打包：
 
 ```bash
-singb publish
+singb bundle
 ```
 
 注意：`singb regen` 会按保存的状态重新生成所有客户端配置，所以手动改 JSON 后不要马上跑 `regen`，否则手动修改会被覆盖。
@@ -201,7 +170,7 @@ macOS 或其他桌面客户端提示：
 route.rule_set[0].http_client: json: unknown field "http_client"
 ```
 
-说明导入到客户端的 JSON 还是旧发布内容，里面含有 sing-box 1.14+ 才支持的 `http_client` 字段。用最新脚本在 VPS 上重新生成并发布：
+说明导入到客户端的 JSON 还是旧内容，里面含有 sing-box 1.14+ 才支持的 `http_client` 字段。用最新脚本在 VPS 上重新生成并打包：
 
 ```bash
 singb regen
@@ -221,18 +190,10 @@ singb logs
 
 ## 安全
 
-远程配置 URL 里的 JSON 包含可用客户端凭据，随机 token 不要泄露。
+配置包里的 JSON 包含可用客户端凭据，只通过 SSH/SCP 等可信通道下载。
 
-如果只是 URL 泄露，轮换 token：
-
-```bash
-singb rotate-token
-```
-
-如果配置可能已经被别人导入，连节点密钥一起轮换：
+如果配置包可能已经被别人拿到，轮换节点密钥：
 
 ```bash
 singb rotate-secrets
 ```
-
-`examples/` 里的 JSON 只是示例。真实配置在 VPS 安装或 `singb regen` 时生成。
