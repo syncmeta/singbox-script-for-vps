@@ -8,7 +8,7 @@ bash /tmp/singb-install.sh
 - TCP 流量走 Xray VLESS Reality Vision，默认端口 TCP/443
 - 其他流量走 Hysteria2，默认端口 UDP/443
 
-装完不会再开 HTTP 配置服务，只在 VPS 本地生成一个配置包：
+装完在 VPS 本地生成一个配置包：
 
 ```text
 /root/singb/singb-profiles.zip
@@ -20,8 +20,6 @@ bash /tmp/singb-install.sh
 scp root@VPS_IP:/root/singb/singb-profiles.zip .
 ```
 
-下载后解压，按客户端场景导入里面的 JSON。iOS 可以把解压后的 JSON 通过 AirDrop、文件 App 或其他可信方式导入 SFM；macOS 直接导入本地文件即可。
-
 压缩包里有 6 个配置：
 
 - `tun-global.json`：TUN 全局代理
@@ -31,7 +29,7 @@ scp root@VPS_IP:/root/singb/singb-profiles.zip .
 - `proxy-hy2-global.json`：本地 mixed 代理，全局走 Hysteria2
 - `proxy-hy2-split.json`：本地 mixed 代理，国内域名/IP 直连
 
-通常优先用 `tun-split.json`。如果只想在桌面浏览器或应用里手动设置本地代理，用 `proxy-split.json`。
+iOS 用前两个。
 
 分流配置使用 `geosite-cn` 和 `geoip-cn` 规则集。TUN 分流还会把国内域名规则交给本地 DNS 解析，并在兜底代理规则前启用 sniff，让按 IP 建连的国内流量也尽量保持直连。
 
