@@ -268,4 +268,4 @@ If the exposed URL may already have been opened or imported, rotate node secrets
 singbox-vps rotate-secrets
 ```
 
-The JSON files in this repository are reference examples only. Real profiles are generated on the VPS during installation.
+The JSON files in `examples/` are reference examples only. Real profiles are generated on the VPS during installation.

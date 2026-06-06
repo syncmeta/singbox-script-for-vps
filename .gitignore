@@ -2,6 +2,7 @@
 client.env
 import-uris.txt
 README.txt
+/*.json
 
 # Private generated profiles
 generated/
