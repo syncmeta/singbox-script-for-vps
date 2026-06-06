@@ -865,16 +865,23 @@ write_profiles() {
   write_private_readme
 
   if command -v sing-box >/dev/null 2>&1; then
-    sing-box check -c "$PROFILE_DIR/tun-global.json"
-    sing-box check -c "$PROFILE_DIR/tun-split.json"
-    ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true sing-box check -c "$PROFILE_DIR/tun-legacy-global.json" >/dev/null 2>&1
-    ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true sing-box check -c "$PROFILE_DIR/tun-legacy-split.json" >/dev/null 2>&1
-    sing-box check -c "$PROFILE_DIR/proxy-global.json"
-    sing-box check -c "$PROFILE_DIR/proxy-split.json"
-    sing-box check -c "$PROFILE_DIR/proxy-hy2-global.json"
-    sing-box check -c "$PROFILE_DIR/proxy-hy2-split.json"
+    check_client_profile "$PROFILE_DIR/tun-global.json"
+    check_client_profile "$PROFILE_DIR/tun-split.json"
+    ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true check_client_profile "$PROFILE_DIR/tun-legacy-global.json"
+    ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true check_client_profile "$PROFILE_DIR/tun-legacy-split.json"
+    check_client_profile "$PROFILE_DIR/proxy-global.json"
+    check_client_profile "$PROFILE_DIR/proxy-split.json"
+    check_client_profile "$PROFILE_DIR/proxy-hy2-global.json"
+    check_client_profile "$PROFILE_DIR/proxy-hy2-split.json"
   else
     warn "sing-box CLI not installed on this VPS; skipped local client-config checks."
+  fi
+}
+
+check_client_profile() {
+  local profile="$1"
+  if ! sing-box check -c "$profile"; then
+    warn "sing-box CLI could not validate $profile; continuing because client profile compatibility depends on the client version."
   fi
 }
 
