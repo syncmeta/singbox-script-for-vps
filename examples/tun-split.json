@@ -105,7 +105,7 @@
         "tag": "geosite-cn",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-        "download_detour": "reality-tcp",
+        "http_client": {"detour": "reality-tcp"},
         "update_interval": "1d"
       },
       {
@@ -113,7 +113,7 @@
         "tag": "geoip-cn",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
-        "download_detour": "reality-tcp",
+        "http_client": {"detour": "reality-tcp"},
         "update_interval": "1d"
       }
     ],

@@ -566,6 +566,11 @@ write_tun_profile() {
   local dns_block=""
   local route_resolver=""
   local hy2_cert_pin_line=""
+  local rule_set_download_client='"http_client": {"detour": "reality-tcp"},'
+
+  if [[ "$legacy_dns" == "1" ]]; then
+    rule_set_download_client='"download_detour": "reality-tcp",'
+  fi
 
   if [[ "$split" == "split" ]]; then
     route_rule_set='
@@ -575,7 +580,7 @@ write_tun_profile() {
         "tag": "geosite-cn",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-        "download_detour": "reality-tcp",
+        '"$rule_set_download_client"'
         "update_interval": "1d"
       },
       {
@@ -583,7 +588,7 @@ write_tun_profile() {
         "tag": "geoip-cn",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
-        "download_detour": "reality-tcp",
+        '"$rule_set_download_client"'
         "update_interval": "1d"
       }
     ],'
