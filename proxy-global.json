@@ -14,7 +14,7 @@
     {
       "type": "vless",
       "tag": "reality-tcp",
-      "server": "YOUR_SERVER_IP",
+      "server": "203.0.113.10",
       "server_port": 443,
       "uuid": "00000000-0000-4000-8000-000000000000",
       "flow": "xtls-rprx-vision",
@@ -28,8 +28,8 @@
         },
         "reality": {
           "enabled": true,
-          "public_key": "YOUR_REALITY_PUBLIC_KEY",
-          "short_id": "YOUR_REALITY_SHORT_ID"
+          "public_key": "FThmbQN8yA7JkxEPSTcUei1LI-kgo_FOKq8qXea8sVA",
+          "short_id": "0123456789abcdef"
         }
       }
     },
@@ -46,7 +46,7 @@
     "rules": [
       {
         "ip_cidr": [
-          "YOUR_SERVER_IP/32"
+          "203.0.113.10/32"
         ],
         "action": "route",
         "outbound": "direct"

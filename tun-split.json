@@ -10,14 +10,15 @@
   "dns": {
     "servers": [
       {
+        "type": "https",
         "tag": "cloudflare-doh",
-        "address": "https://1.1.1.1/dns-query",
-        "detour": "reality-tcp",
-        "strategy": "prefer_ipv4"
+        "server": "1.1.1.1",
+        "path": "/dns-query",
+        "detour": "reality-tcp"
       },
       {
-        "tag": "local",
-        "address": "local"
+        "type": "local",
+        "tag": "local"
       }
     ],
     "final": "cloudflare-doh",
@@ -45,7 +46,7 @@
     {
       "type": "vless",
       "tag": "reality-tcp",
-      "server": "YOUR_SERVER_IP",
+      "server": "203.0.113.10",
       "server_port": 443,
       "uuid": "00000000-0000-4000-8000-000000000000",
       "flow": "xtls-rprx-vision",
@@ -59,15 +60,15 @@
         },
         "reality": {
           "enabled": true,
-          "public_key": "YOUR_REALITY_PUBLIC_KEY",
-          "short_id": "YOUR_REALITY_SHORT_ID"
+          "public_key": "FThmbQN8yA7JkxEPSTcUei1LI-kgo_FOKq8qXea8sVA",
+          "short_id": "0123456789abcdef"
         }
       }
     },
     {
       "type": "hysteria2",
       "tag": "hy2",
-      "server": "YOUR_SERVER_IP",
+      "server": "203.0.113.10",
       "server_port": 443,
       "password": "YOUR_HYSTERIA2_PASSWORD",
       "obfs": {
@@ -76,10 +77,10 @@
       },
       "tls": {
         "enabled": true,
-        "server_name": "YOUR_SERVER_IP",
+        "server_name": "203.0.113.10",
         "insecure": true,
         "certificate_public_key_sha256": [
-          "YOUR_HYSTERIA2_CERT_PUBLIC_KEY_SHA256"
+          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         ]
       }
     },
@@ -94,6 +95,10 @@
   ],
   "route": {
     "auto_detect_interface": true,
+    "default_domain_resolver": {
+      "server": "cloudflare-doh",
+      "strategy": "prefer_ipv4"
+    },
     "rule_set": [
       {
         "type": "remote",
@@ -129,7 +134,7 @@
       },
       {
         "ip_cidr": [
-          "YOUR_SERVER_IP/32"
+          "203.0.113.10/32"
         ],
         "action": "route",
         "outbound": "direct"

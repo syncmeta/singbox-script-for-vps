@@ -19,7 +19,7 @@
     {
       "type": "hysteria2",
       "tag": "hy2",
-      "server": "YOUR_SERVER_IP",
+      "server": "203.0.113.10",
       "server_port": 443,
       "password": "YOUR_HYSTERIA2_PASSWORD",
       "obfs": {
@@ -28,10 +28,10 @@
       },
       "tls": {
         "enabled": true,
-        "server_name": "YOUR_SERVER_IP",
+        "server_name": "203.0.113.10",
         "insecure": true,
         "certificate_public_key_sha256": [
-          "YOUR_HYSTERIA2_CERT_PUBLIC_KEY_SHA256"
+          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         ]
       }
     },
@@ -66,7 +66,7 @@
     "rules": [
       {
         "ip_cidr": [
-          "YOUR_SERVER_IP/32"
+          "203.0.113.10/32"
         ],
         "action": "route",
         "outbound": "direct"

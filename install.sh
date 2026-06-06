@@ -109,6 +109,8 @@ Commands:
 Profiles:
   tun-global
   tun-split
+  tun-legacy-global
+  tun-legacy-split
   proxy-global
   proxy-split
   proxy-hy2-global
@@ -558,8 +560,11 @@ EOF
 write_tun_profile() {
   local path="$1"
   local split="${2:-global}"
+  local legacy_dns="${3:-0}"
   local route_rule_set=""
   local cn_rules=""
+  local dns_block=""
+  local route_resolver=""
 
   if [[ "$split" == "split" ]]; then
     route_rule_set='
@@ -586,11 +591,8 @@ write_tun_profile() {
       {"rule_set": ["geosite-cn", "geoip-cn"], "action": "route", "outbound": "direct"},'
   fi
 
-  cat > "$path" <<EOF
-{
-  "log": {"level": "info"},
-  "experimental": {"cache_file": {"enabled": true}},
-  "dns": {
+  if [[ "$legacy_dns" == "1" ]]; then
+    dns_block='  "dns": {
     "servers": [
       {
         "tag": "cloudflare-doh",
@@ -602,7 +604,31 @@ write_tun_profile() {
     ],
     "final": "cloudflare-doh",
     "strategy": "prefer_ipv4"
-  },
+  },'
+  else
+    dns_block='  "dns": {
+    "servers": [
+      {
+        "type": "https",
+        "tag": "cloudflare-doh",
+        "server": "1.1.1.1",
+        "path": "/dns-query",
+        "detour": "reality-tcp"
+      },
+      {"type": "local", "tag": "local"}
+    ],
+    "final": "cloudflare-doh",
+    "strategy": "prefer_ipv4"
+  },'
+    route_resolver='
+    "default_domain_resolver": {"server": "cloudflare-doh", "strategy": "prefer_ipv4"},'
+  fi
+
+  cat > "$path" <<EOF
+{
+  "log": {"level": "info"},
+  "experimental": {"cache_file": {"enabled": true}},
+$dns_block
   "inbounds": [
     {
       "type": "tun",
@@ -652,7 +678,7 @@ write_tun_profile() {
     {"type": "block", "tag": "block"}
   ],
   "route": {
-    "auto_detect_interface": true,$route_rule_set
+    "auto_detect_interface": true,$route_resolver$route_rule_set
     "rules": [
       {"network": ["tcp", "udp"], "port": 53, "action": "hijack-dns"},
       {"protocol": ["dns"], "action": "hijack-dns"},
@@ -816,6 +842,8 @@ write_profiles() {
 
   write_tun_profile "$PROFILE_DIR/tun-global.json" global
   write_tun_profile "$PROFILE_DIR/tun-split.json" split
+  write_tun_profile "$PROFILE_DIR/tun-legacy-global.json" global 1
+  write_tun_profile "$PROFILE_DIR/tun-legacy-split.json" split 1
   write_proxy_profile "$PROFILE_DIR/proxy-global.json" global
   write_proxy_profile "$PROFILE_DIR/proxy-split.json" split
   write_hy2_proxy_profile "$PROFILE_DIR/proxy-hy2-global.json" global
@@ -830,8 +858,10 @@ write_profiles() {
   write_private_readme
 
   if command -v sing-box >/dev/null 2>&1; then
-    ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true sing-box check -c "$PROFILE_DIR/tun-global.json"
-    ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true sing-box check -c "$PROFILE_DIR/tun-split.json"
+    sing-box check -c "$PROFILE_DIR/tun-global.json"
+    sing-box check -c "$PROFILE_DIR/tun-split.json"
+    ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true sing-box check -c "$PROFILE_DIR/tun-legacy-global.json" >/dev/null 2>&1
+    ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true sing-box check -c "$PROFILE_DIR/tun-legacy-split.json" >/dev/null 2>&1
     sing-box check -c "$PROFILE_DIR/proxy-global.json"
     sing-box check -c "$PROFILE_DIR/proxy-split.json"
     sing-box check -c "$PROFILE_DIR/proxy-hy2-global.json"
@@ -885,6 +915,8 @@ Proxy setup for $SERVER_IP
 Local profile files:
 $PROFILE_DIR/tun-global.json
 $PROFILE_DIR/tun-split.json
+$PROFILE_DIR/tun-legacy-global.json
+$PROFILE_DIR/tun-legacy-split.json
 $PROFILE_DIR/proxy-global.json
 $PROFILE_DIR/proxy-split.json
 $PROFILE_DIR/proxy-hy2-global.json
@@ -892,6 +924,12 @@ $PROFILE_DIR/proxy-hy2-split.json
 
 Recommended first import:
 proxy-split.json
+
+Modern TUN import:
+tun-split.json
+
+Legacy iOS fallback:
+tun-legacy-split.json
 
 Hysteria2 proxy import:
 proxy-hy2-split.json
@@ -931,6 +969,8 @@ profile_links_text() {
   cat <<EOF
 http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/tun-global.json
 http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/tun-split.json
+http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/tun-legacy-global.json
+http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/tun-legacy-split.json
 http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/proxy-global.json
 http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/proxy-split.json
 http://$SERVER_IP:$PUBLISH_PORT/$PROFILE_TOKEN/proxy-hy2-global.json
@@ -975,6 +1015,8 @@ publish_profiles() {
   install -d -m 755 "$public_dir"
   cp "$PROFILE_DIR"/tun-global.json "$public_dir/"
   cp "$PROFILE_DIR"/tun-split.json "$public_dir/"
+  cp "$PROFILE_DIR"/tun-legacy-global.json "$public_dir/"
+  cp "$PROFILE_DIR"/tun-legacy-split.json "$public_dir/"
   cp "$PROFILE_DIR"/proxy-global.json "$public_dir/"
   cp "$PROFILE_DIR"/proxy-split.json "$public_dir/"
   cp "$PROFILE_DIR"/proxy-hy2-global.json "$public_dir/"
@@ -1097,6 +1139,12 @@ print_done() {
 Recommended profile:
   proxy-split
 
+Modern TUN profile:
+  tun-split
+
+Legacy iOS fallback:
+  tun-legacy-split
+
 Hysteria2 proxy profile:
   proxy-hy2-split
 
@@ -1123,6 +1171,12 @@ $(profile_links_text)
 
 Recommended first import:
   proxy-split.json
+
+Modern TUN import:
+  tun-split.json
+
+Legacy iOS fallback:
+  tun-legacy-split.json
 
 Hysteria2 proxy import:
   proxy-hy2-split.json
@@ -1190,6 +1244,8 @@ profile_path_for_name() {
   case "$name" in
     tun-global|tun-global.json) printf '%s/tun-global.json' "$PROFILE_DIR" ;;
     tun-split|tun-split.json) printf '%s/tun-split.json' "$PROFILE_DIR" ;;
+    tun-legacy-global|tun-legacy-global.json) printf '%s/tun-legacy-global.json' "$PROFILE_DIR" ;;
+    tun-legacy-split|tun-legacy-split.json) printf '%s/tun-legacy-split.json' "$PROFILE_DIR" ;;
     proxy-global|proxy-global.json) printf '%s/proxy-global.json' "$PROFILE_DIR" ;;
     proxy-split|proxy-split.json) printf '%s/proxy-split.json' "$PROFILE_DIR" ;;
     proxy-hy2-global|proxy-hy2-global.json) printf '%s/proxy-hy2-global.json' "$PROFILE_DIR" ;;

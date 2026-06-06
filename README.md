@@ -56,11 +56,13 @@ The installer creates:
 
 ## Import Links
 
-After installation, the script prints six import URLs:
+After installation, the script prints eight import URLs:
 
 ```text
 http://VPS_IP:8080/RANDOM_TOKEN/tun-global.json
 http://VPS_IP:8080/RANDOM_TOKEN/tun-split.json
+http://VPS_IP:8080/RANDOM_TOKEN/tun-legacy-global.json
+http://VPS_IP:8080/RANDOM_TOKEN/tun-legacy-split.json
 http://VPS_IP:8080/RANDOM_TOKEN/proxy-global.json
 http://VPS_IP:8080/RANDOM_TOKEN/proxy-split.json
 http://VPS_IP:8080/RANDOM_TOKEN/proxy-hy2-global.json
@@ -79,6 +81,18 @@ Recommended first profile:
 
 ```text
 proxy-split.json
+```
+
+Modern TUN profile:
+
+```text
+tun-split.json
+```
+
+Legacy iOS fallback:
+
+```text
+tun-legacy-split.json
 ```
 
 Hysteria2 proxy-only profile:
@@ -182,6 +196,8 @@ singbox-vps publish
 
 - `tun-global.json`: TUN mode, full proxy
 - `tun-split.json`: TUN mode, CN direct
+- `tun-legacy-global.json`: TUN mode, full proxy, legacy DNS format for old iOS clients
+- `tun-legacy-split.json`: TUN mode, CN direct, legacy DNS format for old iOS clients
 - `proxy-global.json`: local mixed proxy, VLESS Reality, full proxy
 - `proxy-split.json`: local mixed proxy, VLESS Reality, CN direct
 - `proxy-hy2-global.json`: local mixed proxy, Hysteria2, full proxy
@@ -193,7 +209,7 @@ For iOS, start with:
 tun-split.json
 ```
 
-The generated TUN profiles intentionally use the legacy sing-box DNS server format so older iOS builds can import them.
+If an older iOS client reports `dns.servers[0].type: unknown field "type"`, use `tun-legacy-split.json` instead.
 
 ## Troubleshooting
 
@@ -203,7 +219,13 @@ If iOS reports:
 decode config:dns.servers[0].type:json:unknown field "type"
 ```
 
-Regenerate profiles with the latest installer:
+Use the legacy TUN fallback link:
+
+```text
+tun-legacy-split.json
+```
+
+If the legacy link is not available yet, regenerate profiles with the latest installer:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/syncmeta/singbox-script-for-vps/main/install.sh -o /tmp/singbox-vps-install.sh
@@ -211,7 +233,9 @@ bash /tmp/singbox-vps-install.sh
 singbox-vps links
 ```
 
-Then delete the old profile on iOS and import the new `tun-split.json` URL.
+Then delete the old profile on iOS and import the new `tun-legacy-split.json` URL.
+
+If iOS shows deprecation warnings about `legacy DNS servers` or missing `route.default_domain_resolver`, import `tun-split.json` instead of `tun-legacy-split.json`.
 
 If a desktop client can import a profile but cannot connect, check the VPS first:
 

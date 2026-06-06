@@ -7,7 +7,33 @@
       "enabled": true
     }
   },
+  "dns": {
+    "servers": [
+      {
+        "tag": "cloudflare-doh",
+        "address": "https://1.1.1.1/dns-query",
+        "detour": "reality-tcp",
+        "strategy": "prefer_ipv4"
+      },
+      {
+        "tag": "local",
+        "address": "local"
+      }
+    ],
+    "final": "cloudflare-doh",
+    "strategy": "prefer_ipv4"
+  },
   "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "address": [
+        "172.19.0.1/30"
+      ],
+      "mtu": 1500,
+      "auto_route": true,
+      "stack": "system"
+    },
     {
       "type": "mixed",
       "tag": "mixed-in",
@@ -39,6 +65,25 @@
       }
     },
     {
+      "type": "hysteria2",
+      "tag": "hy2",
+      "server": "203.0.113.10",
+      "server_port": 443,
+      "password": "YOUR_HYSTERIA2_PASSWORD",
+      "obfs": {
+        "type": "salamander",
+        "password": "YOUR_HYSTERIA2_OBFS_PASSWORD"
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "203.0.113.10",
+        "insecure": true,
+        "certificate_public_key_sha256": [
+          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        ]
+      }
+    },
+    {
       "type": "direct",
       "tag": "direct"
     },
@@ -48,6 +93,7 @@
     }
   ],
   "route": {
+    "auto_detect_interface": true,
     "rule_set": [
       {
         "type": "remote",
@@ -67,6 +113,20 @@
       }
     ],
     "rules": [
+      {
+        "network": [
+          "tcp",
+          "udp"
+        ],
+        "port": 53,
+        "action": "hijack-dns"
+      },
+      {
+        "protocol": [
+          "dns"
+        ],
+        "action": "hijack-dns"
+      },
       {
         "ip_cidr": [
           "203.0.113.10/32"
@@ -97,11 +157,26 @@
         "outbound": "direct"
       },
       {
-        "protocol": [
-          "bittorrent"
+        "network": [
+          "udp"
         ],
+        "port": 443,
         "action": "route",
         "outbound": "block"
+      },
+      {
+        "network": [
+          "tcp"
+        ],
+        "action": "route",
+        "outbound": "reality-tcp"
+      },
+      {
+        "network": [
+          "udp"
+        ],
+        "action": "route",
+        "outbound": "hy2"
       }
     ],
     "final": "reality-tcp"
