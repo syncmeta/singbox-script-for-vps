@@ -25,15 +25,15 @@ scp root@VPS_IP:/root/singb/singb-profiles.zip .
 文件名会加 VPS IP 前缀，例如 `VPS_IP-tun-split.json`：
 
 - `VPS_IP-tun-global.json`：TUN 全局代理
-- `VPS_IP-tun-split.json`：TUN 分流，国内域名/IP 直连
+- `VPS_IP-tun-split.json`：TUN 分流，国内 IP 直连
 - `VPS_IP-proxy-global.json`：本地 mixed 代理，全局走 VLESS Reality
-- `VPS_IP-proxy-split.json`：本地 mixed 代理，国内域名/IP 直连
+- `VPS_IP-proxy-split.json`：本地 mixed 代理，国内 IP 直连
 - `VPS_IP-proxy-hy2-global.json`：本地 mixed 代理，全局走 Hysteria2
-- `VPS_IP-proxy-hy2-split.json`：本地 mixed 代理，国内域名/IP 直连
+- `VPS_IP-proxy-hy2-split.json`：本地 mixed 代理，国内 IP 直连
 
 iOS 用前两个。
 
-分流配置使用 `geosite-cn` 和 `geoip-cn` 规则集。TUN 分流还会把国内域名规则交给本地 DNS 解析，并在兜底代理规则前启用 sniff，让按 IP 建连的国内流量也尽量保持直连。
+分流配置只使用 `geoip-cn` 规则集，不按域名后缀或 `geosite` 规则直连。遇到域名目的地时会先 `sniff`/`resolve` 成 IP，再按 `geoip-cn` 判断是否直连。TUN 配置不再单独拦截 UDP/443，UDP 流量会按规则走 Hysteria2。
 
 为了兼容当前常见的 sing-box 1.13.x 客户端，规则集下载仍使用 `download_detour` 字段。它在新版本里已标记废弃，但 1.13.x 不认识 1.14+ 的 `http_client` 字段。
 
@@ -103,6 +103,12 @@ singb edit proxy-split
 
 ```bash
 singb regen
+```
+
+从 GitHub 更新 `singb` 管理脚本，并用现有密钥重新生成配置：
+
+```bash
+singb update
 ```
 
 重新打包当前客户端配置。手动改过 `/var/lib/singb/profiles/*.json` 后，用这个命令刷新 zip：

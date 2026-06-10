@@ -7,6 +7,23 @@
       "enabled": true
     }
   },
+  "dns": {
+    "servers": [
+      {
+        "type": "https",
+        "tag": "cloudflare-doh",
+        "server": "1.1.1.1",
+        "path": "/dns-query",
+        "detour": "reality-tcp"
+      },
+      {
+        "type": "local",
+        "tag": "local"
+      }
+    ],
+    "final": "cloudflare-doh",
+    "strategy": "prefer_ipv4"
+  },
   "inbounds": [
     {
       "type": "mixed",
@@ -48,15 +65,11 @@
     }
   ],
   "route": {
+    "default_domain_resolver": {
+      "server": "cloudflare-doh",
+      "strategy": "prefer_ipv4"
+    },
     "rule_set": [
-      {
-        "type": "remote",
-        "tag": "geosite-cn",
-        "format": "binary",
-        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-        "download_detour": "reality-tcp",
-        "update_interval": "1d"
-      },
       {
         "type": "remote",
         "tag": "geoip-cn",
@@ -71,6 +84,10 @@
         "action": "sniff"
       },
       {
+        "action": "resolve",
+        "strategy": "prefer_ipv4"
+      },
+      {
         "ip_cidr": [
           "203.0.113.10/32"
         ],
@@ -83,17 +100,7 @@
         "outbound": "direct"
       },
       {
-        "domain_suffix": [
-          ".cn",
-          ".中国",
-          ".中國"
-        ],
-        "action": "route",
-        "outbound": "direct"
-      },
-      {
         "rule_set": [
-          "geosite-cn",
           "geoip-cn"
         ],
         "action": "route",

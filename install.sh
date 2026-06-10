@@ -26,6 +26,7 @@ usage() {
   singb regen
 
 维护:
+  bash install.sh update [--url URL]
   bash install.sh uninstall [--purge-binaries]
 EOF
 }
@@ -47,6 +48,7 @@ write_manager() {
 set -euo pipefail
 
 APP_NAME="singb"
+INSTALL_URL="https://raw.githubusercontent.com/syncmeta/singbox-script-for-vps/main/install.sh"
 CONFIG_DIR="/etc/singb"
 CONFIG_FILE="$CONFIG_DIR/config.env"
 STATE_FILE="$CONFIG_DIR/state.env"
@@ -135,6 +137,7 @@ usage() {
   profiles                  列出本地生成的客户端配置
   edit <配置名>             编辑指定客户端配置并重新打包
   regen                     根据已保存状态重新生成服务端和客户端配置
+  update                    从 GitHub 更新 singb 并重新生成配置
   bundle                    重新打包当前客户端配置
   restart                   重启 Xray 和 Hysteria2
   rotate-secrets            重新生成节点密钥和客户端配置
@@ -609,22 +612,14 @@ write_tun_profile() {
   local split="${2:-global}"
   local route_rule_set=""
   local cn_rules=""
-  local cn_dns_rules=""
   local dns_block=""
   local route_resolver=""
+  local resolve_rule=""
   local rule_set_download_client='"download_detour": "reality-tcp",'
 
   if [[ "$split" == "split" ]]; then
     route_rule_set='
     "rule_set": [
-      {
-        "type": "remote",
-        "tag": "geosite-cn",
-        "format": "binary",
-        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-        '"$rule_set_download_client"'
-        "update_interval": "1d"
-      },
       {
         "type": "remote",
         "tag": "geoip-cn",
@@ -635,13 +630,9 @@ write_tun_profile() {
       }
     ],'
     cn_rules='
-      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "route", "outbound": "direct"},
-      {"rule_set": ["geosite-cn", "geoip-cn"], "action": "route", "outbound": "direct"},'
-    cn_dns_rules='
-    "rules": [
-      {"domain_suffix": [".cn", ".中国", ".中國"], "server": "local"},
-      {"rule_set": "geosite-cn", "server": "local"}
-    ],'
+      {"rule_set": ["geoip-cn"], "action": "route", "outbound": "direct"},'
+    resolve_rule='
+      {"action": "resolve", "strategy": "prefer_ipv4"},'
   fi
 
   dns_block='  "dns": {
@@ -654,7 +645,7 @@ write_tun_profile() {
         "detour": "reality-tcp"
       },
       {"type": "local", "tag": "local"}
-    ],'"$cn_dns_rules"'
+    ],
     "final": "cloudflare-doh",
     "strategy": "prefer_ipv4"
   },'
@@ -717,12 +708,11 @@ $dns_block
   "route": {
     "auto_detect_interface": true,$route_resolver$route_rule_set
     "rules": [
-      {"action": "sniff"},
+      {"action": "sniff"},$resolve_rule
       {"network": ["tcp", "udp"], "port": 53, "action": "hijack-dns"},
       {"protocol": ["dns"], "action": "hijack-dns"},
       {"ip_cidr": ["$SERVER_IP/32"], "action": "route", "outbound": "direct"},
       {"ip_is_private": true, "action": "route", "outbound": "direct"},$cn_rules
-      {"network": ["udp"], "port": 443, "action": "route", "outbound": "block"},
       {"network": ["tcp"], "action": "route", "outbound": "reality-tcp"},
       {"network": ["udp"], "action": "route", "outbound": "hy2"}
     ],
@@ -735,20 +725,31 @@ EOF
 write_proxy_profile() {
   local path="$1"
   local split="${2:-global}"
+  local dns_block=""
+  local route_resolver=""
   local route_rule_set=""
   local cn_rules=""
+  local resolve_rule=""
 
   if [[ "$split" == "split" ]]; then
+    dns_block='  "dns": {
+    "servers": [
+      {
+        "type": "https",
+        "tag": "cloudflare-doh",
+        "server": "1.1.1.1",
+        "path": "/dns-query",
+        "detour": "reality-tcp"
+      },
+      {"type": "local", "tag": "local"}
+    ],
+    "final": "cloudflare-doh",
+    "strategy": "prefer_ipv4"
+  },'
+    route_resolver='
+    "default_domain_resolver": {"server": "cloudflare-doh", "strategy": "prefer_ipv4"},'
     route_rule_set='
     "rule_set": [
-      {
-        "type": "remote",
-        "tag": "geosite-cn",
-        "format": "binary",
-        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-        "download_detour": "reality-tcp",
-        "update_interval": "1d"
-      },
       {
         "type": "remote",
         "tag": "geoip-cn",
@@ -759,14 +760,16 @@ write_proxy_profile() {
       }
     ],'
     cn_rules='
-      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "route", "outbound": "direct"},
-      {"rule_set": ["geosite-cn", "geoip-cn"], "action": "route", "outbound": "direct"},'
+      {"rule_set": ["geoip-cn"], "action": "route", "outbound": "direct"},'
+    resolve_rule='
+      {"action": "resolve", "strategy": "prefer_ipv4"},'
   fi
 
   cat > "$path" <<EOF
 {
   "log": {"level": "info"},
   "experimental": {"cache_file": {"enabled": true}},
+$dns_block
   "inbounds": [
     {"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 7890}
   ],
@@ -793,9 +796,9 @@ write_proxy_profile() {
     {"type": "direct", "tag": "direct"},
     {"type": "block", "tag": "block"}
   ],
-  "route": {$route_rule_set
+  "route": {$route_resolver$route_rule_set
     "rules": [
-      {"action": "sniff"},
+      {"action": "sniff"},$resolve_rule
       {"ip_cidr": ["$SERVER_IP/32"], "action": "route", "outbound": "direct"},
       {"ip_is_private": true, "action": "route", "outbound": "direct"},$cn_rules
       {"protocol": ["bittorrent"], "action": "route", "outbound": "block"}
@@ -809,20 +812,31 @@ EOF
 write_hy2_proxy_profile() {
   local path="$1"
   local split="${2:-global}"
+  local dns_block=""
+  local route_resolver=""
   local route_rule_set=""
   local cn_rules=""
+  local resolve_rule=""
 
   if [[ "$split" == "split" ]]; then
+    dns_block='  "dns": {
+    "servers": [
+      {
+        "type": "https",
+        "tag": "cloudflare-doh",
+        "server": "1.1.1.1",
+        "path": "/dns-query",
+        "detour": "hy2"
+      },
+      {"type": "local", "tag": "local"}
+    ],
+    "final": "cloudflare-doh",
+    "strategy": "prefer_ipv4"
+  },'
+    route_resolver='
+    "default_domain_resolver": {"server": "cloudflare-doh", "strategy": "prefer_ipv4"},'
     route_rule_set='
     "rule_set": [
-      {
-        "type": "remote",
-        "tag": "geosite-cn",
-        "format": "binary",
-        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-        "download_detour": "hy2",
-        "update_interval": "1d"
-      },
       {
         "type": "remote",
         "tag": "geoip-cn",
@@ -833,14 +847,16 @@ write_hy2_proxy_profile() {
       }
     ],'
     cn_rules='
-      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "route", "outbound": "direct"},
-      {"rule_set": ["geosite-cn", "geoip-cn"], "action": "route", "outbound": "direct"},'
+      {"rule_set": ["geoip-cn"], "action": "route", "outbound": "direct"},'
+    resolve_rule='
+      {"action": "resolve", "strategy": "prefer_ipv4"},'
   fi
 
   cat > "$path" <<EOF
 {
   "log": {"level": "info"},
   "experimental": {"cache_file": {"enabled": true}},
+$dns_block
   "inbounds": [
     {"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 7890}
   ],
@@ -862,9 +878,9 @@ write_hy2_proxy_profile() {
     {"type": "direct", "tag": "direct"},
     {"type": "block", "tag": "block"}
   ],
-  "route": {$route_rule_set
+  "route": {$route_resolver$route_rule_set
     "rules": [
-      {"action": "sniff"},
+      {"action": "sniff"},$resolve_rule
       {"ip_cidr": ["$SERVER_IP/32"], "action": "route", "outbound": "direct"},
       {"ip_is_private": true, "action": "route", "outbound": "direct"},$cn_rules
       {"protocol": ["bittorrent"], "action": "route", "outbound": "block"}
@@ -1296,6 +1312,47 @@ rotate_secrets_command() {
   links_command
 }
 
+update_command() {
+  local url="$INSTALL_URL"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --url)
+        [[ $# -ge 2 ]] || die "--url 需要一个 URL。"
+        url="$2"
+        shift 2
+        ;;
+      -h|--help)
+        cat <<EOF
+用法:
+  singb update [--url URL]
+
+默认从 GitHub main 分支下载最新 install.sh，更新 /usr/local/bin/singb，
+然后使用现有 /etc/singb/config.env 和 /etc/singb/state.env 执行 regen。
+EOF
+        return 0
+        ;;
+      *)
+        die "未知更新选项：$1"
+        ;;
+    esac
+  done
+
+  require_root
+  command -v curl >/dev/null 2>&1 || die "缺少 curl，无法下载更新脚本。"
+  local tmp
+  tmp="$(mktemp /tmp/singb-install.XXXXXX.sh)" || die "无法创建临时文件。"
+  trap 'rm -f "$tmp"' RETURN
+
+  info "正在下载最新安装脚本：$url"
+  curl -fsSL "$url" -o "$tmp" || die "下载更新脚本失败：$url"
+  chmod 700 "$tmp"
+
+  info "正在更新 singb 并重新生成配置"
+  bash "$tmp" regen
+  info "更新完成"
+  "$MANAGER_BIN" links
+}
+
 logs_command() {
   journalctl \
     -u xray \
@@ -1319,6 +1376,7 @@ main() {
     profiles) profiles_command "$@" ;;
     edit) edit_command "$@" ;;
     regen) regen_all "$@" ;;
+    update) update_command "$@" ;;
     bundle) require_root; bundle_profiles "$@"; links_command ;;
     restart) require_root; load_config; restart_services "$@" ;;
     rotate-secrets) rotate_secrets_command "$@" ;;
@@ -1341,7 +1399,7 @@ if [[ -e "$OLD_MANAGER_BIN" || -L "$OLD_MANAGER_BIN" ]]; then
   rm -f -- "$OLD_MANAGER_BIN"
 fi
 case "${1:-}" in
-  install|uninstall|links|status|config|profiles|edit|regen|bundle|restart|rotate-secrets|logs|help|-h|--help)
+  install|uninstall|links|status|config|profiles|edit|regen|update|bundle|restart|rotate-secrets|logs|help|-h|--help)
     exec "$MANAGER_BIN" "$@"
     ;;
   *)

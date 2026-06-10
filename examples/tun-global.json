@@ -126,14 +126,6 @@
       },
       {
         "network": [
-          "udp"
-        ],
-        "port": 443,
-        "action": "route",
-        "outbound": "block"
-      },
-      {
-        "network": [
           "tcp"
         ],
         "action": "route",

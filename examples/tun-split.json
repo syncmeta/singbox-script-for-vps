@@ -21,20 +21,6 @@
         "tag": "local"
       }
     ],
-    "rules": [
-      {
-        "domain_suffix": [
-          ".cn",
-          ".中国",
-          ".中國"
-        ],
-        "server": "local"
-      },
-      {
-        "rule_set": "geosite-cn",
-        "server": "local"
-      }
-    ],
     "final": "cloudflare-doh",
     "strategy": "prefer_ipv4"
   },
@@ -116,14 +102,6 @@
     "rule_set": [
       {
         "type": "remote",
-        "tag": "geosite-cn",
-        "format": "binary",
-        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-        "download_detour": "reality-tcp",
-        "update_interval": "1d"
-      },
-      {
-        "type": "remote",
         "tag": "geoip-cn",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
@@ -134,6 +112,10 @@
     "rules": [
       {
         "action": "sniff"
+      },
+      {
+        "action": "resolve",
+        "strategy": "prefer_ipv4"
       },
       {
         "network": [
@@ -162,29 +144,11 @@
         "outbound": "direct"
       },
       {
-        "domain_suffix": [
-          ".cn",
-          ".中国",
-          ".中國"
-        ],
-        "action": "route",
-        "outbound": "direct"
-      },
-      {
         "rule_set": [
-          "geosite-cn",
           "geoip-cn"
         ],
         "action": "route",
         "outbound": "direct"
-      },
-      {
-        "network": [
-          "udp"
-        ],
-        "port": 443,
-        "action": "route",
-        "outbound": "block"
       },
       {
         "network": [
