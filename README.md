@@ -25,15 +25,15 @@ scp root@VPS_IP:/root/singb/singb-profiles.zip .
 文件名会加 VPS IP 前缀，例如 `VPS_IP-tun-split.json`：
 
 - `VPS_IP-tun-global.json`：TUN 全局代理
-- `VPS_IP-tun-split.json`：TUN 分流，国内 IP 直连
+- `VPS_IP-tun-split.json`：TUN 分流，国内域名/IP 白名单直连
 - `VPS_IP-proxy-global.json`：本地 mixed 代理，全局走 VLESS Reality
-- `VPS_IP-proxy-split.json`：本地 mixed 代理，国内 IP 直连
+- `VPS_IP-proxy-split.json`：本地 mixed 代理，国内域名/IP 白名单直连
 - `VPS_IP-proxy-hy2-global.json`：本地 mixed 代理，全局走 Hysteria2
-- `VPS_IP-proxy-hy2-split.json`：本地 mixed 代理，国内 IP 直连
+- `VPS_IP-proxy-hy2-split.json`：本地 mixed 代理，国内域名/IP 白名单直连
 
 iOS 用前两个。
 
-分流配置只使用 `geoip-cn` 规则集，不按域名后缀或 `geosite` 规则直连。遇到域名目的地时会先 `sniff`/`resolve` 成 IP，再按 `geoip-cn` 判断是否直连。TUN 配置不再单独拦截 UDP/443，UDP 流量会按规则走 Hysteria2。
+分流配置采用 direct whitelist、默认代理的模型：`.cn` / `.中国` / `.中國` 和 `cn-domain-whitelist` 命中的国内域名先用本地 DNS 解析，并直接走 `direct`；`cn-ip-whitelist` 继续作为 IP 兜底直连规则，避免没有域名信息或只能按 IP 判断的国内流量误走代理；其他流量默认走代理。TUN 配置不再单独拦截 UDP/443，UDP 流量会按规则走 Hysteria2。
 
 为了兼容当前常见的 sing-box 1.13.x 客户端，规则集下载仍使用 `download_detour` 字段。它在新版本里已标记废弃，但 1.13.x 不认识 1.14+ 的 `http_client` 字段。
 

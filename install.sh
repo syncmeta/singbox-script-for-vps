@@ -612,6 +612,8 @@ write_tun_profile() {
   local split="${2:-global}"
   local route_rule_set=""
   local cn_rules=""
+  local cn_dns_rules=""
+  local cn_resolve_rules=""
   local dns_block=""
   local route_resolver=""
   local resolve_rule=""
@@ -622,7 +624,15 @@ write_tun_profile() {
     "rule_set": [
       {
         "type": "remote",
-        "tag": "geoip-cn",
+        "tag": "cn-domain-whitelist",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
+        '"$rule_set_download_client"'
+        "update_interval": "1d"
+      },
+      {
+        "type": "remote",
+        "tag": "cn-ip-whitelist",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
         '"$rule_set_download_client"'
@@ -630,7 +640,17 @@ write_tun_profile() {
       }
     ],'
     cn_rules='
-      {"rule_set": ["geoip-cn"], "action": "route", "outbound": "direct"},'
+      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "route", "outbound": "direct"},
+      {"rule_set": ["cn-domain-whitelist"], "action": "route", "outbound": "direct"},
+      {"rule_set": ["cn-ip-whitelist"], "action": "route", "outbound": "direct"},'
+    cn_dns_rules='
+    "rules": [
+      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "route", "server": "local"},
+      {"rule_set": ["cn-domain-whitelist"], "action": "route", "server": "local"}
+    ],'
+    cn_resolve_rules='
+      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "resolve", "server": "local", "strategy": "prefer_ipv4"},
+      {"rule_set": ["cn-domain-whitelist"], "action": "resolve", "server": "local", "strategy": "prefer_ipv4"},'
     resolve_rule='
       {"action": "resolve", "strategy": "prefer_ipv4"},'
   fi
@@ -646,6 +666,7 @@ write_tun_profile() {
       },
       {"type": "local", "tag": "local"}
     ],
+'"$cn_dns_rules"'
     "final": "cloudflare-doh",
     "strategy": "prefer_ipv4"
   },'
@@ -708,7 +729,7 @@ $dns_block
   "route": {
     "auto_detect_interface": true,$route_resolver$route_rule_set
     "rules": [
-      {"action": "sniff"},$resolve_rule
+      {"action": "sniff"},$cn_resolve_rules$resolve_rule
       {"network": ["tcp", "udp"], "port": 53, "action": "hijack-dns"},
       {"protocol": ["dns"], "action": "hijack-dns"},
       {"ip_cidr": ["$SERVER_IP/32"], "action": "route", "outbound": "direct"},
@@ -729,6 +750,7 @@ write_proxy_profile() {
   local route_resolver=""
   local route_rule_set=""
   local cn_rules=""
+  local cn_resolve_rules=""
   local resolve_rule=""
 
   if [[ "$split" == "split" ]]; then
@@ -743,6 +765,10 @@ write_proxy_profile() {
       },
       {"type": "local", "tag": "local"}
     ],
+    "rules": [
+      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "route", "server": "local"},
+      {"rule_set": ["cn-domain-whitelist"], "action": "route", "server": "local"}
+    ],
     "final": "cloudflare-doh",
     "strategy": "prefer_ipv4"
   },'
@@ -752,7 +778,15 @@ write_proxy_profile() {
     "rule_set": [
       {
         "type": "remote",
-        "tag": "geoip-cn",
+        "tag": "cn-domain-whitelist",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
+        "download_detour": "reality-tcp",
+        "update_interval": "1d"
+      },
+      {
+        "type": "remote",
+        "tag": "cn-ip-whitelist",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
         "download_detour": "reality-tcp",
@@ -760,7 +794,12 @@ write_proxy_profile() {
       }
     ],'
     cn_rules='
-      {"rule_set": ["geoip-cn"], "action": "route", "outbound": "direct"},'
+      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "route", "outbound": "direct"},
+      {"rule_set": ["cn-domain-whitelist"], "action": "route", "outbound": "direct"},
+      {"rule_set": ["cn-ip-whitelist"], "action": "route", "outbound": "direct"},'
+    cn_resolve_rules='
+      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "resolve", "server": "local", "strategy": "prefer_ipv4"},
+      {"rule_set": ["cn-domain-whitelist"], "action": "resolve", "server": "local", "strategy": "prefer_ipv4"},'
     resolve_rule='
       {"action": "resolve", "strategy": "prefer_ipv4"},'
   fi
@@ -798,7 +837,7 @@ $dns_block
   ],
   "route": {$route_resolver$route_rule_set
     "rules": [
-      {"action": "sniff"},$resolve_rule
+      {"action": "sniff"},$cn_resolve_rules$resolve_rule
       {"ip_cidr": ["$SERVER_IP/32"], "action": "route", "outbound": "direct"},
       {"ip_is_private": true, "action": "route", "outbound": "direct"},$cn_rules
       {"protocol": ["bittorrent"], "action": "route", "outbound": "block"}
@@ -816,6 +855,7 @@ write_hy2_proxy_profile() {
   local route_resolver=""
   local route_rule_set=""
   local cn_rules=""
+  local cn_resolve_rules=""
   local resolve_rule=""
 
   if [[ "$split" == "split" ]]; then
@@ -830,6 +870,10 @@ write_hy2_proxy_profile() {
       },
       {"type": "local", "tag": "local"}
     ],
+    "rules": [
+      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "route", "server": "local"},
+      {"rule_set": ["cn-domain-whitelist"], "action": "route", "server": "local"}
+    ],
     "final": "cloudflare-doh",
     "strategy": "prefer_ipv4"
   },'
@@ -839,7 +883,15 @@ write_hy2_proxy_profile() {
     "rule_set": [
       {
         "type": "remote",
-        "tag": "geoip-cn",
+        "tag": "cn-domain-whitelist",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
+        "download_detour": "hy2",
+        "update_interval": "1d"
+      },
+      {
+        "type": "remote",
+        "tag": "cn-ip-whitelist",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
         "download_detour": "hy2",
@@ -847,7 +899,12 @@ write_hy2_proxy_profile() {
       }
     ],'
     cn_rules='
-      {"rule_set": ["geoip-cn"], "action": "route", "outbound": "direct"},'
+      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "route", "outbound": "direct"},
+      {"rule_set": ["cn-domain-whitelist"], "action": "route", "outbound": "direct"},
+      {"rule_set": ["cn-ip-whitelist"], "action": "route", "outbound": "direct"},'
+    cn_resolve_rules='
+      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "resolve", "server": "local", "strategy": "prefer_ipv4"},
+      {"rule_set": ["cn-domain-whitelist"], "action": "resolve", "server": "local", "strategy": "prefer_ipv4"},'
     resolve_rule='
       {"action": "resolve", "strategy": "prefer_ipv4"},'
   fi
@@ -880,7 +937,7 @@ $dns_block
   ],
   "route": {$route_resolver$route_rule_set
     "rules": [
-      {"action": "sniff"},$resolve_rule
+      {"action": "sniff"},$cn_resolve_rules$resolve_rule
       {"ip_cidr": ["$SERVER_IP/32"], "action": "route", "outbound": "direct"},
       {"ip_is_private": true, "action": "route", "outbound": "direct"},$cn_rules
       {"protocol": ["bittorrent"], "action": "route", "outbound": "block"}

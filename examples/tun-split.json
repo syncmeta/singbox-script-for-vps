@@ -21,6 +21,24 @@
         "tag": "local"
       }
     ],
+    "rules": [
+      {
+        "domain_suffix": [
+          ".cn",
+          ".中国",
+          ".中國"
+        ],
+        "action": "route",
+        "server": "local"
+      },
+      {
+        "rule_set": [
+          "cn-domain-whitelist"
+        ],
+        "action": "route",
+        "server": "local"
+      }
+    ],
     "final": "cloudflare-doh",
     "strategy": "prefer_ipv4"
   },
@@ -102,7 +120,15 @@
     "rule_set": [
       {
         "type": "remote",
-        "tag": "geoip-cn",
+        "tag": "cn-domain-whitelist",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
+        "download_detour": "reality-tcp",
+        "update_interval": "1d"
+      },
+      {
+        "type": "remote",
+        "tag": "cn-ip-whitelist",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
         "download_detour": "reality-tcp",
@@ -112,6 +138,24 @@
     "rules": [
       {
         "action": "sniff"
+      },
+      {
+        "domain_suffix": [
+          ".cn",
+          ".中国",
+          ".中國"
+        ],
+        "action": "resolve",
+        "server": "local",
+        "strategy": "prefer_ipv4"
+      },
+      {
+        "rule_set": [
+          "cn-domain-whitelist"
+        ],
+        "action": "resolve",
+        "server": "local",
+        "strategy": "prefer_ipv4"
       },
       {
         "action": "resolve",
@@ -144,8 +188,24 @@
         "outbound": "direct"
       },
       {
+        "domain_suffix": [
+          ".cn",
+          ".中国",
+          ".中國"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
         "rule_set": [
-          "geoip-cn"
+          "cn-domain-whitelist"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "rule_set": [
+          "cn-ip-whitelist"
         ],
         "action": "route",
         "outbound": "direct"
