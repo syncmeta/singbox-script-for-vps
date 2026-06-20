@@ -1,0 +1,60 @@
+{
+  "log": {"level": "info"},
+  "experimental": {"cache_file": {"enabled": true}},
+  "dns": {
+    "servers": [
+      {
+        "type": "https",
+        "tag": "cloudflare-doh",
+        "server": "1.1.1.1",
+        "path": "/dns-query",
+        "detour": "hy2"
+      },
+      {"type": "local", "tag": "local"}
+    ],
+    "final": "cloudflare-doh",
+    "strategy": "prefer_ipv4"
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "address": ["172.19.0.1/30"],
+      "mtu": 1500,
+      "auto_route": true,
+      "stack": "system"
+    },
+    {"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 7890}
+  ],
+  "outbounds": [
+    {
+      "type": "hysteria2",
+      "tag": "hy2",
+      "server": "203.0.113.10",
+      "server_port": 443,
+      "password": "YOUR_HYSTERIA2_PASSWORD",
+      "obfs": {"type": "salamander", "password": "YOUR_HYSTERIA2_OBFS_PASSWORD"},
+      "tls": {
+        "enabled": true,
+        "server_name": "203.0.113.10",
+        "insecure": true,
+        "certificate_public_key_sha256": ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]
+      }
+    },
+    {"type": "direct", "tag": "direct"},
+    {"type": "block", "tag": "block"}
+  ],
+  "route": {
+    "auto_detect_interface": true,
+    "default_domain_resolver": {"server": "cloudflare-doh", "strategy": "prefer_ipv4"},
+    "rules": [
+      {"action": "sniff"},
+      {"network": ["tcp", "udp"], "port": 53, "action": "hijack-dns"},
+      {"protocol": ["dns"], "action": "hijack-dns"},
+      {"ip_cidr": ["203.0.113.10/32"], "action": "route", "outbound": "direct"},
+      {"ip_is_private": true, "action": "route", "outbound": "direct"},
+      {"network": ["tcp", "udp"], "action": "route", "outbound": "hy2"}
+    ],
+    "final": "hy2"
+  }
+}

@@ -20,20 +20,22 @@ bash /tmp/singb-install.sh
 scp root@VPS_IP:/root/singb/singb-profiles.zip .
 ```
 
-压缩包里有 6 个配置：
+压缩包里有 8 个配置：
 
 文件名会加 VPS IP 前缀，例如 `VPS_IP-tun-split.json`：
 
 - `VPS_IP-tun-global.json`：TUN 全局代理
-- `VPS_IP-tun-split.json`：TUN 分流，国内域名/IP 白名单直连
+- `VPS_IP-tun-split.json`：TUN 分流，国内域名/IP 白名单直连；TCP 走 Reality，UDP 走 Hysteria2
+- `VPS_IP-tun-hy2-global.json`：TUN 全局代理，全部代理流量走 Hysteria2
+- `VPS_IP-tun-hy2-split.json`：TUN 分流，国内域名/IP 白名单直连，其他流量走 Hysteria2
 - `VPS_IP-proxy-global.json`：本地 mixed 代理，全局走 VLESS Reality
 - `VPS_IP-proxy-split.json`：本地 mixed 代理，国内域名/IP 白名单直连
 - `VPS_IP-proxy-hy2-global.json`：本地 mixed 代理，全局走 Hysteria2
 - `VPS_IP-proxy-hy2-split.json`：本地 mixed 代理，国内域名/IP 白名单直连
 
-iOS 用前两个。
+iOS/SFM 优先导入 TUN 配置。通常先试 `VPS_IP-tun-hy2-global.json`；如果国内 App 明显绕远，再试 `VPS_IP-tun-hy2-split.json` 或原来的 `VPS_IP-tun-split.json`。
 
-分流配置采用 direct whitelist、默认代理的模型：`.cn` / `.中国` / `.中國` 和 `cn-domain-whitelist` 命中的国内域名先用本地 DNS 解析，并直接走 `direct`；`cn-ip-whitelist` 继续作为 IP 兜底直连规则，避免没有域名信息或只能按 IP 判断的国内流量误走代理；其他流量默认走代理。TUN 配置不再单独拦截 UDP/443，UDP 流量会按规则走 Hysteria2。
+分流配置采用 direct whitelist、默认代理的模型：`.cn` / `.中国` / `.中國` 和 `cn-domain-whitelist` 命中的国内域名先用本地 DNS 解析，并直接走 `direct`；`cn-ip-whitelist` 继续作为 IP 兜底直连规则，避免没有域名信息或只能按 IP 判断的国内流量误走代理；其他流量默认走代理。`tun-split` 里 TCP 走 Reality、UDP 走 Hysteria2；`tun-hy2-split` 里非直连流量都走 Hysteria2。TUN 配置不再单独拦截 UDP/443。
 
 为了兼容当前常见的 sing-box 1.13.x 客户端，规则集下载仍使用 `download_detour` 字段。它在新版本里已标记废弃，但 1.13.x 不认识 1.14+ 的 `http_client` 字段。
 
@@ -194,7 +196,7 @@ singb status
 singb logs
 ```
 
-再确认服务商防火墙放行了 TCP/443 和 UDP/443。全设备代理优先用 `VPS_IP-tun-split.json`；`VPS_IP-proxy-split.json` 只是在本机暴露 `127.0.0.1:7890` mixed 代理。
+再确认服务商防火墙放行了 TCP/443 和 UDP/443。全设备代理优先试 `VPS_IP-tun-hy2-global.json` 或 `VPS_IP-tun-hy2-split.json`；`VPS_IP-proxy-split.json` 只是在本机暴露 `127.0.0.1:7890` mixed 代理。
 
 ## 安全
 

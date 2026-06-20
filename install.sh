@@ -98,6 +98,8 @@ profile_ids() {
   printf '%s\n' \
     tun-global \
     tun-split \
+    tun-hy2-global \
+    tun-hy2-split \
     proxy-global \
     proxy-split \
     proxy-hy2-global \
@@ -147,6 +149,8 @@ usage() {
 配置名:
   tun-global
   tun-split
+  tun-hy2-global
+  tun-hy2-split
   proxy-global
   proxy-split
   proxy-hy2-global
@@ -948,6 +952,121 @@ $dns_block
 EOF
 }
 
+write_hy2_tun_profile() {
+  local path="$1"
+  local split="${2:-global}"
+  local dns_block=""
+  local route_resolver=""
+  local route_rule_set=""
+  local cn_rules=""
+  local cn_dns_rules=""
+  local cn_resolve_rules=""
+  local resolve_rule=""
+
+  if [[ "$split" == "split" ]]; then
+    route_rule_set='
+    "rule_set": [
+      {
+        "type": "remote",
+        "tag": "cn-domain-whitelist",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
+        "download_detour": "hy2",
+        "update_interval": "1d"
+      },
+      {
+        "type": "remote",
+        "tag": "cn-ip-whitelist",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
+        "download_detour": "hy2",
+        "update_interval": "1d"
+      }
+    ],'
+    cn_rules='
+      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "route", "outbound": "direct"},
+      {"rule_set": ["cn-domain-whitelist"], "action": "route", "outbound": "direct"},
+      {"rule_set": ["cn-ip-whitelist"], "action": "route", "outbound": "direct"},'
+    cn_dns_rules='
+    "rules": [
+      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "route", "server": "local"},
+      {"rule_set": ["cn-domain-whitelist"], "action": "route", "server": "local"}
+    ],'
+    cn_resolve_rules='
+      {"domain_suffix": [".cn", ".中国", ".中國"], "action": "resolve", "server": "local", "strategy": "prefer_ipv4"},
+      {"rule_set": ["cn-domain-whitelist"], "action": "resolve", "server": "local", "strategy": "prefer_ipv4"},'
+    resolve_rule='
+      {"action": "resolve", "strategy": "prefer_ipv4"},'
+  fi
+
+  dns_block='  "dns": {
+    "servers": [
+      {
+        "type": "https",
+        "tag": "cloudflare-doh",
+        "server": "1.1.1.1",
+        "path": "/dns-query",
+        "detour": "hy2"
+      },
+      {"type": "local", "tag": "local"}
+    ],
+'"$cn_dns_rules"'
+    "final": "cloudflare-doh",
+    "strategy": "prefer_ipv4"
+  },'
+  route_resolver='
+    "default_domain_resolver": {"server": "cloudflare-doh", "strategy": "prefer_ipv4"},'
+
+  cat > "$path" <<EOF
+{
+  "log": {"level": "info"},
+  "experimental": {"cache_file": {"enabled": true}},
+$dns_block
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "address": ["172.19.0.1/30"],
+      "mtu": 1500,
+      "auto_route": true,
+      "stack": "system"
+    },
+    {"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 7890}
+  ],
+  "outbounds": [
+    {
+      "type": "hysteria2",
+      "tag": "hy2",
+      "server": "$SERVER_IP",
+      "server_port": $HY2_PORT,
+      "password": "$HY2_PASSWORD",
+      "obfs": {"type": "$HY2_OBFS_TYPE", "password": "$HY2_OBFS_PASSWORD"},
+      "tls": {
+        "enabled": true,
+        "server_name": "$SERVER_IP",
+        "insecure": true,
+        "certificate_public_key_sha256": ["$HY2_TLS_CERT_PUBKEY_SHA256"]
+      }
+    },
+    {"type": "direct", "tag": "direct"},
+    {"type": "block", "tag": "block"}
+  ],
+  "route": {
+    "auto_detect_interface": true,$route_resolver$route_rule_set
+    "rules": [
+      {"action": "sniff"},$cn_resolve_rules$resolve_rule
+      {"network": ["tcp", "udp"], "port": 53, "action": "hijack-dns"},
+      {"protocol": ["dns"], "action": "hijack-dns"},
+      {"ip_cidr": ["$SERVER_IP/32"], "action": "route", "outbound": "direct"},
+      {"ip_is_private": true, "action": "route", "outbound": "direct"},$cn_rules
+      {"network": ["tcp", "udp"], "action": "route", "outbound": "hy2"}
+    ],
+    "final": "hy2"
+  }
+}
+EOF
+}
+
 write_profiles() {
   info "正在生成 sing-box 客户端配置"
   install -d -m 700 "$PRIVATE_DIR"
@@ -957,6 +1076,8 @@ write_profiles() {
 
   write_tun_profile "$(profile_path tun-global)" global
   write_tun_profile "$(profile_path tun-split)" split
+  write_hy2_tun_profile "$(profile_path tun-hy2-global)" global
+  write_hy2_tun_profile "$(profile_path tun-hy2-split)" split
   write_proxy_profile "$(profile_path proxy-global)" global
   write_proxy_profile "$(profile_path proxy-split)" split
   write_hy2_proxy_profile "$(profile_path proxy-hy2-global)" global
@@ -973,6 +1094,8 @@ write_profiles() {
   if command -v sing-box >/dev/null 2>&1; then
     check_client_profile "$(profile_path tun-global)"
     check_client_profile "$(profile_path tun-split)"
+    check_client_profile "$(profile_path tun-hy2-global)"
+    check_client_profile "$(profile_path tun-hy2-split)"
     check_client_profile "$(profile_path proxy-global)"
     check_client_profile "$(profile_path proxy-split)"
     check_client_profile "$(profile_path proxy-hy2-global)"
@@ -1028,9 +1151,12 @@ EOF
 
 write_private_readme() {
   local archive_path="$PRIVATE_DIR/$PROFILE_ARCHIVE_NAME"
-  local tun_global_name tun_split_name proxy_global_name proxy_split_name proxy_hy2_global_name proxy_hy2_split_name
+  local tun_global_name tun_split_name tun_hy2_global_name tun_hy2_split_name
+  local proxy_global_name proxy_split_name proxy_hy2_global_name proxy_hy2_split_name
   tun_global_name="$(profile_filename tun-global)"
   tun_split_name="$(profile_filename tun-split)"
+  tun_hy2_global_name="$(profile_filename tun-hy2-global)"
+  tun_hy2_split_name="$(profile_filename tun-hy2-split)"
   proxy_global_name="$(profile_filename proxy-global)"
   proxy_split_name="$(profile_filename proxy-split)"
   proxy_hy2_global_name="$(profile_filename proxy-hy2-global)"
@@ -1041,14 +1167,20 @@ write_private_readme() {
 本地客户端配置文件：
 $PROFILE_DIR/$tun_global_name
 $PROFILE_DIR/$tun_split_name
+$PROFILE_DIR/$tun_hy2_global_name
+$PROFILE_DIR/$tun_hy2_split_name
 $PROFILE_DIR/$proxy_global_name
 $PROFILE_DIR/$proxy_split_name
 $PROFILE_DIR/$proxy_hy2_global_name
 $PROFILE_DIR/$proxy_hy2_split_name
 
 推荐导入：
-iOS/SFM 全局或分流：
+iOS/SFM 混合 Reality/HY2：
   $tun_split_name
+
+iOS/SFM Hysteria2 全局或分流：
+  $tun_hy2_global_name
+  $tun_hy2_split_name
 
 桌面/浏览器仅代理：
   $proxy_split_name
@@ -1087,8 +1219,9 @@ EOF
 profile_bundle_text() {
   load_config
   local archive_path="$PRIVATE_DIR/$PROFILE_ARCHIVE_NAME"
-  local tun_split_name proxy_split_name
+  local tun_split_name tun_hy2_global_name proxy_split_name
   tun_split_name="$(profile_filename tun-split)"
+  tun_hy2_global_name="$(profile_filename tun-hy2-global)"
   proxy_split_name="$(profile_filename proxy-split)"
   cat <<EOF
 配置包：
@@ -1099,6 +1232,7 @@ profile_bundle_text() {
 
 解压后导入需要的 JSON，例如：
   $tun_split_name
+  $tun_hy2_global_name
   $proxy_split_name
 EOF
 }
@@ -1121,6 +1255,8 @@ bundle_profiles() {
     python3 -m zipfile -c "$archive_path" \
       "$(profile_filename tun-global)" \
       "$(profile_filename tun-split)" \
+      "$(profile_filename tun-hy2-global)" \
+      "$(profile_filename tun-hy2-split)" \
       "$(profile_filename proxy-global)" \
       "$(profile_filename proxy-split)" \
       "$(profile_filename proxy-hy2-global)" \
@@ -1213,8 +1349,9 @@ install_command() {
 }
 
 print_done() {
-  local tun_split_name proxy_split_name proxy_hy2_split_name
+  local tun_split_name tun_hy2_global_name proxy_split_name proxy_hy2_split_name
   tun_split_name="$(profile_filename tun-split)"
+  tun_hy2_global_name="$(profile_filename tun-hy2-global)"
   proxy_split_name="$(profile_filename proxy-split)"
   proxy_hy2_split_name="$(profile_filename proxy-hy2-split)"
   cat <<EOF
@@ -1223,6 +1360,7 @@ print_done() {
 
 推荐导入：
   iOS/SFM：$tun_split_name
+  iOS/SFM Hysteria2 全局：$tun_hy2_global_name
   桌面/浏览器仅代理：$proxy_split_name
   Hysteria2 仅代理：$proxy_hy2_split_name
 
@@ -1245,8 +1383,10 @@ EOF
 
 links_command() {
   load_config
-  local tun_split_name proxy_split_name proxy_hy2_split_name
+  local tun_split_name tun_hy2_global_name tun_hy2_split_name proxy_split_name proxy_hy2_split_name
   tun_split_name="$(profile_filename tun-split)"
+  tun_hy2_global_name="$(profile_filename tun-hy2-global)"
+  tun_hy2_split_name="$(profile_filename tun-hy2-split)"
   proxy_split_name="$(profile_filename proxy-split)"
   proxy_hy2_split_name="$(profile_filename proxy-hy2-split)"
   cat <<EOF
@@ -1255,10 +1395,12 @@ sing-box 客户端配置包：
 $(profile_bundle_text)
 
 推荐优先导入：
-  $proxy_split_name
+  $tun_hy2_global_name
 
 全设备 TUN 导入：
   $tun_split_name
+  $tun_hy2_global_name
+  $tun_hy2_split_name
 
 Hysteria2 仅代理：
   $proxy_hy2_split_name
@@ -1322,6 +1464,8 @@ profile_path_for_name() {
   case "$base" in
     tun-global) profile_path tun-global ;;
     tun-split) profile_path tun-split ;;
+    tun-hy2-global) profile_path tun-hy2-global ;;
+    tun-hy2-split) profile_path tun-hy2-split ;;
     proxy-global) profile_path proxy-global ;;
     proxy-split) profile_path proxy-split ;;
     proxy-hy2-global) profile_path proxy-hy2-global ;;
