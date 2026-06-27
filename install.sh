@@ -54,7 +54,6 @@ CONFIG_FILE="$CONFIG_DIR/config.env"
 STATE_FILE="$CONFIG_DIR/state.env"
 PRIVATE_DIR="/root/singb"
 PROFILE_DIR="/var/lib/singb/profiles"
-PROFILE_ARCHIVE_NAME="singb-profiles.zip"
 PROFILE_WEB_ROOT="/var/www/singb"
 PROFILE_SERVICE="/etc/systemd/system/singb-profile-server.service"
 XRAY_CONFIG="/usr/local/etc/xray/config.json"
@@ -109,6 +108,10 @@ profile_ids() {
 profile_filename() {
   local profile="$1"
   printf '%s-%s.json' "$SERVER_IP" "$profile"
+}
+
+profile_archive_name() {
+  printf '%s.zip' "$SERVER_IP"
 }
 
 profile_path() {
@@ -1150,7 +1153,7 @@ EOF
 }
 
 write_private_readme() {
-  local archive_path="$PRIVATE_DIR/$PROFILE_ARCHIVE_NAME"
+  local archive_path="$PRIVATE_DIR/$(profile_archive_name)"
   local tun_global_name tun_split_name tun_hy2_global_name tun_hy2_split_name
   local proxy_global_name proxy_split_name proxy_hy2_global_name proxy_hy2_split_name
   tun_global_name="$(profile_filename tun-global)"
@@ -1218,7 +1221,7 @@ EOF
 
 profile_bundle_text() {
   load_config
-  local archive_path="$PRIVATE_DIR/$PROFILE_ARCHIVE_NAME"
+  local archive_path="$PRIVATE_DIR/$(profile_archive_name)"
   local tun_split_name tun_hy2_global_name proxy_split_name
   tun_split_name="$(profile_filename tun-split)"
   tun_hy2_global_name="$(profile_filename tun-hy2-global)"
@@ -1248,7 +1251,7 @@ bundle_profiles() {
   remove_path "$OLD_PROFILE_WEB_ROOT"
 
   install -d -m 700 "$PRIVATE_DIR"
-  local archive_path="$PRIVATE_DIR/$PROFILE_ARCHIVE_NAME"
+  local archive_path="$PRIVATE_DIR/$(profile_archive_name)"
   rm -f "$archive_path"
   (
     cd "$PROFILE_DIR"
@@ -1438,7 +1441,7 @@ config_command() {
   $PROFILE_DIR
 
 客户端配置包：
-  $PRIVATE_DIR/$PROFILE_ARCHIVE_NAME
+  $PRIVATE_DIR/$(profile_archive_name)
 
 当前参数：
   SERVER_IP=$SERVER_IP
